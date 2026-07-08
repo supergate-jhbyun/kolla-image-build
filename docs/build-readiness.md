@@ -17,8 +17,9 @@ workflow guard with real Kolla image build and GHCR publish steps.
 Kolla supports Docker and Podman. The first publish path uses Docker because the
 manifest plan uses `docker buildx imagetools`.
 
-The GitHub workflow installs `kolla==20.4.0` for the 2025.1 Epoxy smoke publish
-and prepares QEMU plus a Buildx builder before running `dry_run: false`.
+The GitHub workflow installs `kolla==20.4.0` and the Python Docker SDK for the
+2025.1 Epoxy smoke publish, then prepares QEMU plus a Buildx builder before
+running `dry_run: false`.
 
 ## Command Plan Shape
 
