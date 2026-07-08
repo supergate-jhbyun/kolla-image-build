@@ -22,6 +22,18 @@ manifest plan uses `docker buildx imagetools`.
 `scripts/plan-publish.py` emits executable command arrays. Workflow code should
 execute those arrays rather than reassembling shell strings.
 
+For the first smoke publish, render only `keystone`:
+
+```bash
+python3 scripts/plan-publish.py \
+  --profile core \
+  --image keystone \
+  --release 2025.1 \
+  --distro rocky \
+  --distro-version 9 \
+  --dry-run
+```
+
 Example amd64 build command:
 
 ```bash
@@ -72,6 +84,7 @@ The workflow artifact should include:
 - arm64 ref and digest;
 - multi-arch ref and digest;
 - `docker buildx imagetools create --metadata-file` output.
+- build and inspect logs for each per-architecture ref.
 
 ## GHCR Checklist
 

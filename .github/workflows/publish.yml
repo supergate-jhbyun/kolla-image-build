@@ -33,11 +33,23 @@ on:
         default: core
         options:
           - core
+      image:
+        description: Smoke publish image
+        required: true
+        type: choice
+        default: keystone
+        options:
+          - keystone
       dry_run:
         description: Print the publish plan without building or pushing
         required: true
         type: boolean
         default: true
+      approval:
+        description: Exact approval phrase required when dry_run is false
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -45,7 +57,7 @@ permissions:
 
 jobs:
   publish-plan:
-    name: Render publish plan
+    name: Publish smoke image
     runs-on: ubuntu-latest
 
     steps:
@@ -55,23 +67,145 @@ jobs:
       - name: Validate repository configuration
         run: python3 scripts/validate-config.py
 
-      - name: Render dry-run publish plan
-        run: >
-          python3 scripts/plan-publish.py
-          --profile '${{ inputs.profile }}'
-          --release '${{ inputs.release }}'
-          --distro '${{ inputs.distro }}'
-          --distro-version '${{ inputs.distro_version }}'
-          --dry-run
-
-      - name: Stop non-dry-run publish in scaffold
-        if: ${{ !inputs.dry_run }}
+      - name: Render publish plan
         run: |
-          if [ "${{ vars.ALLOW_GHCR_PUBLISH }}" != "true" ]; then
+          mkdir -p artifacts/logs artifacts/manifests artifacts/plan
+          python3 scripts/plan-publish.py \
+            --profile '${{ inputs.profile }}' \
+            --image '${{ inputs.image }}' \
+            --release '${{ inputs.release }}' \
+            --distro '${{ inputs.distro }}' \
+            --distro-version '${{ inputs.distro_version }}' \
+            --dry-run | tee artifacts/plan/publish-plan.json
+
+      - name: Validate smoke publish approval
+        if: ${{ !inputs.dry_run }}
+        env:
+          ALLOW_GHCR_PUBLISH: ${{ vars.ALLOW_GHCR_PUBLISH }}
+          APPROVAL: ${{ inputs.approval }}
+          EXPECTED_APPROVAL: I approve GHCR smoke publish for keystone 2025.1-rocky-9 from supergate-jhbyun/kolla-image-build.
+        run: |
+          if [ "$ALLOW_GHCR_PUBLISH" != "true" ]; then
             echo "dry_run=false requires repository variable ALLOW_GHCR_PUBLISH=true."
             exit 1
           fi
 
-          echo "dry_run=false was explicitly approved, but real GHCR publish is not implemented yet."
-          echo "Add the real publish implementation in a later PR before using this path."
-          exit 1
+          if [ "$APPROVAL" != "$EXPECTED_APPROVAL" ]; then
+            echo "dry_run=false requires the exact smoke publish approval phrase."
+            exit 1
+          fi
+
+          if [ "${{ inputs.profile }}" != "core" ] ||
+             [ "${{ inputs.image }}" != "keystone" ] ||
+             [ "${{ inputs.release }}" != "2025.1" ] ||
+             [ "${{ inputs.distro }}" != "rocky" ] ||
+             [ "${{ inputs.distro_version }}" != "9" ]; then
+            echo "The first smoke publish is restricted to core/keystone 2025.1-rocky-9."
+            exit 1
+          fi
+
+      - name: Check publish tooling
+        if: ${{ !inputs.dry_run }}
+        run: |
+          command -v python3
+          command -v docker
+          docker version
+          docker buildx version
+          command -v kolla-build
+          kolla-build --version || true
+
+      - name: Log in to GHCR
+        if: ${{ !inputs.dry_run }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+
+      - name: Execute smoke publish plan
+        if: ${{ !inputs.dry_run }}
+        env:
+          PLAN_PATH: artifacts/plan/publish-plan.json
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import shlex
+          import subprocess
+
+          plan_path = pathlib.Path(os.environ["PLAN_PATH"])
+          plan = json.loads(plan_path.read_text(encoding="utf-8"))
+          images = plan["images"]
+          if len(images) != 1 or images[0]["image"] != "keystone":
+              raise SystemExit("smoke publish only supports one keystone image")
+
+          image = images[0]
+          logs_dir = pathlib.Path("artifacts/logs")
+          manifests_dir = pathlib.Path("artifacts/manifests")
+          logs_dir.mkdir(parents=True, exist_ok=True)
+          manifests_dir.mkdir(parents=True, exist_ok=True)
+
+          summary = {
+              "image": image["image"],
+              "deploy_ref": image["deploy_ref"],
+              "deploy_tag": image["deploy_tag"],
+              "manifest_metadata_file": image["manifest_metadata_file"],
+              "architectures": [],
+          }
+
+          def run_command(name, command, log_path):
+              print(f"Running {name}: {' '.join(shlex.quote(part) for part in command)}")
+              with log_path.open("w", encoding="utf-8") as log_file:
+                  log_file.write("$ " + " ".join(shlex.quote(part) for part in command) + "\n")
+                  log_file.flush()
+                  subprocess.run(command, check=True, stdout=log_file, stderr=subprocess.STDOUT)
+
+          for arch in image["architectures"]:
+              arch_name = arch["arch"]
+              run_command(
+                  f"build {arch_name}",
+                  arch["commands"]["kolla_build_push"],
+                  logs_dir / f"keystone-{arch_name}-build.log",
+              )
+              inspect_command = ["docker", "buildx", "imagetools", "inspect", arch["arch_ref"]]
+              run_command(
+                  f"inspect {arch_name}",
+                  inspect_command,
+                  logs_dir / f"keystone-{arch_name}-inspect.log",
+              )
+              summary["architectures"].append(
+                  {
+                      "arch": arch_name,
+                      "arch_ref": arch["arch_ref"],
+                      "arch_tag": arch["arch_tag"],
+                      "inspect_log": str(logs_dir / f"keystone-{arch_name}-inspect.log"),
+                  }
+              )
+
+          run_command(
+              "create manifest",
+              image["commands"]["manifest_create"],
+              logs_dir / "keystone-manifest-create.log",
+          )
+          run_command(
+              "inspect manifest",
+              image["commands"]["manifest_inspect"],
+              logs_dir / "keystone-manifest-inspect.log",
+          )
+
+          metadata_path = pathlib.Path(image["manifest_metadata_file"])
+          if metadata_path.exists():
+              summary["manifest_metadata"] = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+          (manifests_dir / "smoke-publish-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload publish artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kolla-publish-${{ inputs.image }}-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
+          path: artifacts/
+          if-no-files-found: error
