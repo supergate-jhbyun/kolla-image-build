@@ -55,6 +55,10 @@ permissions:
   contents: read
   packages: write
 
+env:
+  DOCKER_BUILDKIT: "1"
+  KOLLA_VERSION: "20.4.0"
+
 jobs:
   publish-plan:
     name: Publish smoke image
@@ -104,6 +108,25 @@ jobs:
             exit 1
           fi
 
+      - name: Set up QEMU for arm64 smoke build
+        if: ${{ !inputs.dry_run }}
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx builder
+        if: ${{ !inputs.dry_run }}
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install Kolla tooling
+        if: ${{ !inputs.dry_run }}
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "kolla==${KOLLA_VERSION}"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
       - name: Check publish tooling
         if: ${{ !inputs.dry_run }}
         run: |
@@ -111,6 +134,7 @@ jobs:
           command -v docker
           docker version
           docker buildx version
+          docker buildx inspect --bootstrap
           command -v kolla-build
           kolla-build --version || true
 
