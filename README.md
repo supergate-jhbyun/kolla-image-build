@@ -96,6 +96,10 @@ variable `ALLOW_GHCR_PUBLISH=true` and still fails because real GHCR publish is
 not implemented in this scaffold. A later implementation PR must replace that
 guard with the actual build, push, manifest, and digest-recording steps.
 
+See [docs/build-readiness.md](docs/build-readiness.md) for the Kolla build
+command plan, Docker manifest commands, runner requirements, and GHCR preflight
+checklist.
+
 ## Next Steps
 
 After the scaffold is validated, add a workflow-dispatched build pipeline that:

@@ -84,6 +84,63 @@ class PlanPublishTest(unittest.TestCase):
             "ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9-amd64",
         )
 
+    def test_kolla_build_commands_are_executable_arrays(self) -> None:
+        plan = run_plan()
+        first_arch = plan["images"][0]["architectures"][0]
+        command = first_arch["commands"]["kolla_build_push"]
+
+        self.assertEqual(command[0], "kolla-build")
+        self.assertIn("--base", command)
+        self.assertIn("rocky", command)
+        self.assertIn("--base-tag", command)
+        self.assertIn("9", command)
+        self.assertIn("--base-arch", command)
+        self.assertIn("x86_64", command)
+        self.assertIn("--platform", command)
+        self.assertIn("linux/amd64", command)
+        self.assertIn("--registry", command)
+        self.assertIn("ghcr.io", command)
+        self.assertIn("--namespace", command)
+        self.assertIn("supergate-jhbyun/kolla-image-build", command)
+        self.assertIn("--tag", command)
+        self.assertIn("2025.1-rocky-9-amd64", command)
+        self.assertIn("--push", command)
+        self.assertEqual(command[-1], "^keystone$")
+
+    def test_manifest_commands_use_per_arch_refs(self) -> None:
+        plan = run_plan()
+        first_image = plan["images"][0]
+
+        self.assertEqual(
+            first_image["commands"]["manifest_create"],
+            [
+                "docker",
+                "buildx",
+                "imagetools",
+                "create",
+                "--tag",
+                "ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9",
+                "--metadata-file",
+                "artifacts/manifests/keystone-2025.1-rocky-9.json",
+                "ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9-amd64",
+                "ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9-arm64",
+            ],
+        )
+        self.assertEqual(
+            first_image["manifest_metadata_file"],
+            "artifacts/manifests/keystone-2025.1-rocky-9.json",
+        )
+        self.assertEqual(
+            first_image["commands"]["manifest_inspect"],
+            [
+                "docker",
+                "buildx",
+                "imagetools",
+                "inspect",
+                "ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9",
+            ],
+        )
+
     def test_refuses_without_dry_run(self) -> None:
         result = subprocess.run(
             [
