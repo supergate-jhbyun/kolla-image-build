@@ -36,6 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--release", required=True, help="OpenStack release, for example 2025.1")
     parser.add_argument("--distro", required=True, help="Base distro name, for example rocky")
     parser.add_argument("--distro-version", required=True, help="Base distro version, for example 9")
+    parser.add_argument("--image", help="Optional image name from the selected profile")
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -79,6 +80,15 @@ def manifest_metadata_file(image: str, deploy_tag: str) -> str:
     return f"artifacts/manifests/{image}-{deploy_tag}.json"
 
 
+def profile_images(profile: dict[str, Any], image_filter: str | None) -> list[str]:
+    images = profile["images"]
+    if image_filter is None:
+        return images
+    if image_filter not in images:
+        raise ValueError(f"image does not exist in profile {profile['name']}: {image_filter}")
+    return [image_filter]
+
+
 def kolla_build_command(
     registry: str,
     owner: str,
@@ -119,15 +129,17 @@ def build_plan(
     profile: dict[str, Any],
     release: str,
     distro: dict[str, str],
+    image_filter: str | None = None,
 ) -> dict[str, Any]:
     tag_policy = matrix["tag_policy"]
     registry = matrix["registry"]
     owner = matrix["owner"]
     repository = matrix["repository"]
     deploy_tag = render_tag(tag_policy["deploy_tag_template"], release, distro)
+    selected_images = profile_images(profile, image_filter)
 
     images = []
-    for image in profile["images"]:
+    for image in selected_images:
         architectures = []
         for arch in matrix["architectures"]:
             arch_tag = render_tag(tag_policy["arch_tag_template"], release, distro, arch)
@@ -195,6 +207,7 @@ def build_plan(
         "distro": distro["name"],
         "distro_version": distro["version"],
         "profile": profile["name"],
+        "image_filter": image_filter,
         "registry": registry,
         "owner": owner,
         "repository": repository,
@@ -216,7 +229,7 @@ def main() -> int:
     try:
         distro = find_distro(matrix, args.distro, args.distro_version)
         profile = load_profile(args.profile)
-        plan = build_plan(matrix, profile, args.release, distro)
+        plan = build_plan(matrix, profile, args.release, distro, args.image)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2

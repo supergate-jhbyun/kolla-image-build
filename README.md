@@ -76,6 +76,7 @@ python3 -m json.tool config/build-matrix.json
 python3 -m json.tool config/profiles/core.json
 python3 scripts/validate-config.py
 python3 scripts/plan-publish.py --profile core --release 2025.1 --distro rocky --distro-version 9 --dry-run
+python3 scripts/plan-publish.py --profile core --image keystone --release 2025.1 --distro rocky --distro-version 9 --dry-run
 python3 -m unittest discover -s tests -v
 ```
 
@@ -89,9 +90,10 @@ The publish workflow is manual-only and safe by default:
 .github/workflows/publish.yml
 ```
 
-It accepts release, distro, distro version, profile, and `dry_run` inputs. The
-default `dry_run: true` path renders the same publish plan as the local planner
-and does not build or push images.
+It accepts release, distro, distro version, profile, image, `dry_run`, and
+approval inputs. The default `dry_run: true` path renders the same publish plan
+as the local planner, uploads that plan as a workflow artifact, and does not
+build or push images.
 
 Run the dry-run workflow with:
 
@@ -102,13 +104,17 @@ gh workflow run publish.yml \
   -f distro=rocky \
   -f distro_version=9 \
   -f profile=core \
+  -f image=keystone \
   -f dry_run=true
 ```
 
 The `dry_run: false` path is intentionally guarded. It requires the repository
-variable `ALLOW_GHCR_PUBLISH=true` and still fails because real GHCR publish is
-not implemented in this scaffold. A later implementation PR must replace that
-guard with the actual build, push, manifest, and digest-recording steps.
+variable `ALLOW_GHCR_PUBLISH=true`, the exact approval phrase documented in
+[docs/smoke-publish-gate.md](docs/smoke-publish-gate.md), and the first smoke
+scope `core/keystone 2025.1-rocky-9`. If those gates pass, the workflow runs
+the planned per-architecture Kolla build commands, creates the multi-arch
+manifest, inspects the result, and uploads logs plus manifest metadata as
+artifacts.
 
 See [docs/build-readiness.md](docs/build-readiness.md) for the Kolla build
 command plan, Docker manifest commands, runner requirements, and GHCR preflight
@@ -116,14 +122,17 @@ checklist.
 
 See [docs/smoke-publish-gate.md](docs/smoke-publish-gate.md) for the explicit
 human approval gate and first-image smoke publish runbook. Until that approval
-is given and the real publish implementation exists, use dry-run only.
+is given and runner/GHCR preflight is confirmed, use dry-run only.
 
 ## Next Steps
 
-After the scaffold is validated, add a workflow-dispatched build pipeline that:
+Before the first real smoke publish:
 
-1. builds per-architecture Kolla images;
-2. pushes architecture-specific debug tags;
-3. creates an architecture-neutral multi-arch manifest tag;
-4. records the final manifest digest for dev, staging, and production
-   promotion.
+1. confirm GHCR visibility policy and package ownership;
+2. confirm the selected runner has Docker, Buildx, BuildKit, Python 3, Kolla,
+   enough disk, and cross-platform build support;
+3. set `ALLOW_GHCR_PUBLISH=true`;
+4. provide the exact approval phrase from
+   [docs/smoke-publish-gate.md](docs/smoke-publish-gate.md);
+5. run the manual workflow for `keystone` only;
+6. review the digest artifacts before expanding beyond the smoke image.

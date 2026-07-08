@@ -11,21 +11,26 @@ ROOT = Path(__file__).resolve().parents[1]
 PLAN_PUBLISH = ROOT / "scripts" / "plan-publish.py"
 
 
-def run_plan() -> dict:
+def plan_command(*extra_args: str) -> list[str]:
+    return [
+        sys.executable,
+        str(PLAN_PUBLISH),
+        "--profile",
+        "core",
+        "--release",
+        "2025.1",
+        "--distro",
+        "rocky",
+        "--distro-version",
+        "9",
+        *extra_args,
+        "--dry-run",
+    ]
+
+
+def run_plan(*extra_args: str) -> dict:
     result = subprocess.run(
-        [
-            sys.executable,
-            str(PLAN_PUBLISH),
-            "--profile",
-            "core",
-            "--release",
-            "2025.1",
-            "--distro",
-            "rocky",
-            "--distro-version",
-            "9",
-            "--dry-run",
-        ],
+        plan_command(*extra_args),
         cwd=ROOT,
         check=True,
         text=True,
@@ -51,6 +56,23 @@ class PlanPublishTest(unittest.TestCase):
                 "horizon",
             },
         )
+
+    def test_image_filter_keeps_only_requested_image(self) -> None:
+        plan = run_plan("--image", "keystone")
+
+        self.assertEqual(plan["image_filter"], "keystone")
+        self.assertEqual([image["image"] for image in plan["images"]], ["keystone"])
+
+    def test_unknown_image_filter_fails(self) -> None:
+        result = subprocess.run(
+            plan_command("--image", "missing-image"),
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("image does not exist in profile core: missing-image", result.stderr)
 
     def test_deploy_tags_do_not_include_arch(self) -> None:
         plan = run_plan()
@@ -138,6 +160,33 @@ class PlanPublishTest(unittest.TestCase):
                 "imagetools",
                 "inspect",
                 "ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9",
+            ],
+        )
+
+    def test_keystone_only_plan_keeps_arch_refs_and_manifest_command(self) -> None:
+        plan = run_plan("--image", "keystone")
+        image = plan["images"][0]
+
+        self.assertEqual(
+            [arch["arch_ref"] for arch in image["architectures"]],
+            [
+                "ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9-amd64",
+                "ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9-arm64",
+            ],
+        )
+        self.assertEqual(
+            image["commands"]["manifest_create"],
+            [
+                "docker",
+                "buildx",
+                "imagetools",
+                "create",
+                "--tag",
+                "ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9",
+                "--metadata-file",
+                "artifacts/manifests/keystone-2025.1-rocky-9.json",
+                "ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9-amd64",
+                "ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9-arm64",
             ],
         )
 
