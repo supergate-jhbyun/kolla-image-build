@@ -1,0 +1,77 @@
+name: Publish Kolla images
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: OpenStack release to plan
+        required: true
+        type: choice
+        default: "2025.1"
+        options:
+          - "2025.1"
+      distro:
+        description: Base distribution
+        required: true
+        type: choice
+        default: rocky
+        options:
+          - rocky
+          - ubuntu
+      distro_version:
+        description: Base distribution version
+        required: true
+        type: choice
+        default: "9"
+        options:
+          - "9"
+          - "24.04"
+      profile:
+        description: Image profile
+        required: true
+        type: choice
+        default: core
+        options:
+          - core
+      dry_run:
+        description: Print the publish plan without building or pushing
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish-plan:
+    name: Render publish plan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate repository configuration
+        run: python3 scripts/validate-config.py
+
+      - name: Render dry-run publish plan
+        run: >
+          python3 scripts/plan-publish.py
+          --profile '${{ inputs.profile }}'
+          --release '${{ inputs.release }}'
+          --distro '${{ inputs.distro }}'
+          --distro-version '${{ inputs.distro_version }}'
+          --dry-run
+
+      - name: Stop non-dry-run publish in scaffold
+        if: ${{ !inputs.dry_run }}
+        run: |
+          if [ "${{ vars.ALLOW_GHCR_PUBLISH }}" != "true" ]; then
+            echo "dry_run=false requires repository variable ALLOW_GHCR_PUBLISH=true."
+            exit 1
+          fi
+
+          echo "dry_run=false was explicitly approved, but real GHCR publish is not implemented yet."
+          echo "Add the real publish implementation in a later PR before using this path."
+          exit 1

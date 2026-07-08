@@ -79,6 +79,23 @@ python3 -m unittest discover -s tests -v
 
 CI runs the same checks on push and pull request.
 
+## Manual Publish Workflow
+
+The publish workflow is manual-only and safe by default:
+
+```text
+.github/workflows/publish.yml
+```
+
+It accepts release, distro, distro version, profile, and `dry_run` inputs. The
+default `dry_run: true` path renders the same publish plan as the local planner
+and does not build or push images.
+
+The `dry_run: false` path is intentionally guarded. It requires the repository
+variable `ALLOW_GHCR_PUBLISH=true` and still fails because real GHCR publish is
+not implemented in this scaffold. A later implementation PR must replace that
+guard with the actual build, push, manifest, and digest-recording steps.
+
 ## Next Steps
 
 After the scaffold is validated, add a workflow-dispatched build pipeline that:
