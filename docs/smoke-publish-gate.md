@@ -38,7 +38,9 @@ Before real publish is implemented or run:
 - `main` is up to date and validate CI is green.
 - `python3 scripts/validate-config.py` passes.
 - `python3 scripts/plan-publish.py --profile core --image keystone --release 2025.1 --distro rocky --distro-version 9 --dry-run` produces the expected `keystone` plan.
-- Runner has Docker Engine, Docker Buildx, BuildKit, Python 3, and `kolla`.
+- Runner has Docker Engine, Docker Buildx, BuildKit, Python 3, network access
+  for `pip`, and enough disk for the smoke build.
+- Workflow installs `kolla==20.4.0` before running `kolla-build`.
 - Workflow permissions include `contents: read` and `packages: write`.
 - GHCR publish uses the repository `GITHUB_TOKEN`; no PAT is required for the
   first workflow-based publish.

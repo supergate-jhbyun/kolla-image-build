@@ -7,7 +7,7 @@ workflow guard with real Kolla image build and GHCR publish steps.
 
 - Linux runner with enough disk for Kolla base layers, service image layers, and
   build cache.
-- Python 3 with the `kolla` package installed.
+- Python 3 with network access to install the `kolla` package.
 - Docker Engine with BuildKit enabled.
 - Docker Buildx plugin installed.
 - A buildx builder capable of the selected platform builds.
@@ -16,6 +16,9 @@ workflow guard with real Kolla image build and GHCR publish steps.
 
 Kolla supports Docker and Podman. The first publish path uses Docker because the
 manifest plan uses `docker buildx imagetools`.
+
+The GitHub workflow installs `kolla==20.4.0` for the 2025.1 Epoxy smoke publish
+and prepares QEMU plus a Buildx builder before running `dry_run: false`.
 
 ## Command Plan Shape
 
