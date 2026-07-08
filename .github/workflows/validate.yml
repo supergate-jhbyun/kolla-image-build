@@ -24,3 +24,9 @@ jobs:
 
       - name: Validate repository configuration
         run: python3 scripts/validate-config.py
+
+      - name: Validate publish planner dry run
+        run: python3 scripts/plan-publish.py --profile core --release 2025.1 --distro rocky --distro-version 9 --dry-run >/dev/null
+
+      - name: Run tests
+        run: python3 -m unittest discover -s tests -v

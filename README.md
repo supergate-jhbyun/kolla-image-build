@@ -73,6 +73,8 @@ Run local validation with:
 python3 -m json.tool config/build-matrix.json
 python3 -m json.tool config/profiles/core.json
 python3 scripts/validate-config.py
+python3 scripts/plan-publish.py --profile core --release 2025.1 --distro rocky --distro-version 9 --dry-run
+python3 -m unittest discover -s tests -v
 ```
 
 CI runs the same checks on push and pull request.
