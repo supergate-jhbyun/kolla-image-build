@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "owner": "supergate-jhbyun",
+  "repository": "kolla-image-build",
+  "registry": "ghcr.io",
+  "release": "2025.1",
+  "profiles": [
+    "core"
+  ],
+  "distros": [
+    {
+      "name": "rocky",
+      "version": "9"
+    },
+    {
+      "name": "ubuntu",
+      "version": "24.04"
+    }
+  ],
+  "architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "tag_policy": {
+    "deploy_tag_template": "{release}-{distro}-{distro_version}",
+    "arch_tag_template": "{release}-{distro}-{distro_version}-{arch}"
+  }
+}
