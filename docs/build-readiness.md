@@ -92,6 +92,9 @@ larger Nova and Neutron image families.
 Do not publish until a human explicitly approves smoke publish and confirms GHCR
 visibility policy.
 
+The exact approval gate, dry-run checks, publish checks, and stop conditions are
+defined in [smoke-publish-gate.md](smoke-publish-gate.md).
+
 ## References
 
 - Kolla image building:

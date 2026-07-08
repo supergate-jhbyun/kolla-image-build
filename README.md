@@ -63,6 +63,8 @@ config/build-matrix.json      Supported release, distro, and arch matrix
 config/profiles/core.json     Initial Kolla image profile for smoke validation
 scripts/validate-config.py    Repository configuration validator
 docs/design.md                Design notes and promotion policy
+docs/build-readiness.md       Real build command and runner readiness notes
+docs/smoke-publish-gate.md    Approval gate and runbook for first publish
 ```
 
 ## Validation
@@ -91,6 +93,18 @@ It accepts release, distro, distro version, profile, and `dry_run` inputs. The
 default `dry_run: true` path renders the same publish plan as the local planner
 and does not build or push images.
 
+Run the dry-run workflow with:
+
+```bash
+gh workflow run publish.yml \
+  --ref main \
+  -f release=2025.1 \
+  -f distro=rocky \
+  -f distro_version=9 \
+  -f profile=core \
+  -f dry_run=true
+```
+
 The `dry_run: false` path is intentionally guarded. It requires the repository
 variable `ALLOW_GHCR_PUBLISH=true` and still fails because real GHCR publish is
 not implemented in this scaffold. A later implementation PR must replace that
@@ -99,6 +113,10 @@ guard with the actual build, push, manifest, and digest-recording steps.
 See [docs/build-readiness.md](docs/build-readiness.md) for the Kolla build
 command plan, Docker manifest commands, runner requirements, and GHCR preflight
 checklist.
+
+See [docs/smoke-publish-gate.md](docs/smoke-publish-gate.md) for the explicit
+human approval gate and first-image smoke publish runbook. Until that approval
+is given and the real publish implementation exists, use dry-run only.
 
 ## Next Steps
 
