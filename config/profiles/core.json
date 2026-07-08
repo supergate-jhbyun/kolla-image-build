@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "core",
+  "description": "Initial Kolla image profile for OpenStack control-plane smoke validation.",
+  "images": [
+    "keystone",
+    "glance",
+    "placement",
+    "nova",
+    "neutron",
+    "heat",
+    "horizon"
+  ]
+}
