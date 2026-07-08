@@ -13,6 +13,14 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX_PATH = ROOT / "config" / "build-matrix.json"
 PROFILES_DIR = ROOT / "config" / "profiles"
+ARCH_TO_KOLLA_BASE_ARCH = {
+    "amd64": "x86_64",
+    "arm64": "aarch64",
+}
+ARCH_TO_PLATFORM = {
+    "amd64": "linux/amd64",
+    "arm64": "linux/arm64",
+}
 
 
 def load_json(path: Path) -> Any:
@@ -67,6 +75,45 @@ def image_ref(registry: str, owner: str, repository: str, image: str, tag: str) 
     return f"{registry}/{owner}/{repository}/{image}:{tag}"
 
 
+def manifest_metadata_file(image: str, deploy_tag: str) -> str:
+    return f"artifacts/manifests/{image}-{deploy_tag}.json"
+
+
+def kolla_build_command(
+    registry: str,
+    owner: str,
+    repository: str,
+    image: str,
+    release: str,
+    distro: dict[str, str],
+    arch: str,
+    arch_tag: str,
+) -> list[str]:
+    return [
+        "kolla-build",
+        "--engine",
+        "docker",
+        "--base",
+        distro["name"],
+        "--base-tag",
+        distro["version"],
+        "--base-arch",
+        ARCH_TO_KOLLA_BASE_ARCH[arch],
+        "--platform",
+        ARCH_TO_PLATFORM[arch],
+        "--openstack-release",
+        release,
+        "--registry",
+        registry,
+        "--namespace",
+        f"{owner}/{repository}",
+        "--tag",
+        arch_tag,
+        "--push",
+        f"^{image}$",
+    ]
+
+
 def build_plan(
     matrix: dict[str, Any],
     profile: dict[str, Any],
@@ -91,17 +138,54 @@ def build_plan(
                     "arch_tag": arch_tag,
                     "arch_ref": arch_ref,
                     "expected_ghcr_ref": arch_ref,
+                    "kolla_base_arch": ARCH_TO_KOLLA_BASE_ARCH[arch],
+                    "platform": ARCH_TO_PLATFORM[arch],
+                    "commands": {
+                        "kolla_build_push": kolla_build_command(
+                            registry,
+                            owner,
+                            repository,
+                            image,
+                            release,
+                            distro,
+                            arch,
+                            arch_tag,
+                        )
+                    },
                 }
             )
 
         deploy_ref = image_ref(registry, owner, repository, image, deploy_tag)
+        arch_refs = [arch_plan["arch_ref"] for arch_plan in architectures]
+        metadata_file = manifest_metadata_file(image, deploy_tag)
         images.append(
             {
                 "image": image,
                 "deploy_tag": deploy_tag,
                 "deploy_ref": deploy_ref,
                 "expected_ghcr_ref": deploy_ref,
+                "manifest_metadata_file": metadata_file,
                 "architectures": architectures,
+                "commands": {
+                    "manifest_create": [
+                        "docker",
+                        "buildx",
+                        "imagetools",
+                        "create",
+                        "--tag",
+                        deploy_ref,
+                        "--metadata-file",
+                        metadata_file,
+                        *arch_refs,
+                    ],
+                    "manifest_inspect": [
+                        "docker",
+                        "buildx",
+                        "imagetools",
+                        "inspect",
+                        deploy_ref,
+                    ],
+                },
             }
         )
 

@@ -98,6 +98,9 @@ ghcr.io/<owner>/kolla-image-build/<image>:2025.1-rocky-9-arm64
 - Final artifact includes image name, deploy tag, amd64 digest, arm64 digest,
   and multi-arch manifest digest.
 
+See [build-readiness.md](build-readiness.md) for runner requirements, concrete
+command shapes, manifest commands, and the GHCR preflight checklist.
+
 ## Risks
 
 - GitHub repository transfer does not automatically make personal GHCR packages
