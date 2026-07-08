@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""Validate kolla-image-build repository configuration."""
+
+from __future__ import annotations
+
+import json
+import string
+import sys
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MATRIX_PATH = ROOT / "config" / "build-matrix.json"
+PROFILES_DIR = ROOT / "config" / "profiles"
+
+EXPECTED_RELEASE = "2025.1"
+ALLOWED_DISTROS = {"rocky", "ubuntu"}
+ALLOWED_ARCHITECTURES = {"amd64", "arm64"}
+REQUIRED_TEMPLATE_FIELDS = {"release", "distro", "distro_version"}
+ARCH_TEMPLATE_FIELDS = REQUIRED_TEMPLATE_FIELDS | {"arch"}
+
+
+def load_json(path: Path) -> Any:
+    with path.open(encoding="utf-8") as file_obj:
+        return json.load(file_obj)
+
+
+def template_fields(template: str) -> set[str]:
+    return {
+        field_name
+        for _, field_name, _, _ in string.Formatter().parse(template)
+        if field_name
+    }
+
+
+def render_tag(template: str, release: str, distro: dict[str, str], arch: str) -> str:
+    return template.format(
+        release=release,
+        distro=distro["name"],
+        distro_version=distro["version"],
+        arch=arch,
+    )
+
+
+def validate_matrix(matrix: dict[str, Any], errors: list[str]) -> None:
+    if matrix.get("release") != EXPECTED_RELEASE:
+        errors.append(f"release must be {EXPECTED_RELEASE!r}")
+
+    distros = matrix.get("distros")
+    if not isinstance(distros, list) or not distros:
+        errors.append("distros must be a non-empty list")
+        distros = []
+
+    for index, distro in enumerate(distros):
+        if not isinstance(distro, dict):
+            errors.append(f"distros[{index}] must be an object")
+            continue
+        name = distro.get("name")
+        version = distro.get("version")
+        if name not in ALLOWED_DISTROS:
+            errors.append(f"distros[{index}].name must be one of {sorted(ALLOWED_DISTROS)}")
+        if not isinstance(version, str) or not version:
+            errors.append(f"distros[{index}].version must be a non-empty string")
+
+    architectures = matrix.get("architectures")
+    if set(architectures or []) != ALLOWED_ARCHITECTURES:
+        errors.append(f"architectures must be exactly {sorted(ALLOWED_ARCHITECTURES)}")
+
+    tag_policy = matrix.get("tag_policy")
+    if not isinstance(tag_policy, dict):
+        errors.append("tag_policy must be an object")
+        return
+
+    deploy_template = tag_policy.get("deploy_tag_template")
+    arch_template = tag_policy.get("arch_tag_template")
+    if not isinstance(deploy_template, str):
+        errors.append("tag_policy.deploy_tag_template must be a string")
+        deploy_template = ""
+    if not isinstance(arch_template, str):
+        errors.append("tag_policy.arch_tag_template must be a string")
+        arch_template = ""
+
+    deploy_fields = template_fields(deploy_template)
+    arch_fields = template_fields(arch_template)
+    if deploy_fields != REQUIRED_TEMPLATE_FIELDS:
+        errors.append(
+            "deploy_tag_template must use only "
+            f"{sorted(REQUIRED_TEMPLATE_FIELDS)} fields"
+        )
+    if arch_fields != ARCH_TEMPLATE_FIELDS:
+        errors.append(
+            "arch_tag_template must use only "
+            f"{sorted(ARCH_TEMPLATE_FIELDS)} fields"
+        )
+
+    if errors:
+        return
+
+    release = matrix["release"]
+    for distro in distros:
+        for arch in architectures:
+            deploy_tag = render_tag(deploy_template, release, distro, arch)
+            arch_tag = render_tag(arch_template, release, distro, arch)
+            if deploy_tag.endswith(f"-{arch}"):
+                errors.append(f"deploy tag must not include arch suffix: {deploy_tag}")
+            if not arch_tag.endswith(f"-{arch}"):
+                errors.append(f"arch tag must include arch suffix: {arch_tag}")
+
+
+def validate_profiles(matrix: dict[str, Any], errors: list[str]) -> None:
+    profiles = matrix.get("profiles")
+    if not isinstance(profiles, list) or not profiles:
+        errors.append("profiles must be a non-empty list")
+        return
+
+    for profile_name in profiles:
+        if not isinstance(profile_name, str) or not profile_name:
+            errors.append(f"profile reference must be a non-empty string: {profile_name!r}")
+            continue
+
+        profile_path = PROFILES_DIR / f"{profile_name}.json"
+        if not profile_path.exists():
+            errors.append(f"profile does not exist: {profile_path.relative_to(ROOT)}")
+            continue
+
+        profile = load_json(profile_path)
+        if profile.get("name") != profile_name:
+            errors.append(f"{profile_path.relative_to(ROOT)} name must be {profile_name!r}")
+
+        images = profile.get("images")
+        if not isinstance(images, list) or not images:
+            errors.append(f"{profile_path.relative_to(ROOT)} images must be a non-empty list")
+            continue
+
+        for image in images:
+            if not isinstance(image, str) or not image:
+                errors.append(
+                    f"{profile_path.relative_to(ROOT)} image entries must be non-empty strings"
+                )
+
+
+def main() -> int:
+    errors: list[str] = []
+    matrix = load_json(MATRIX_PATH)
+    validate_matrix(matrix, errors)
+    validate_profiles(matrix, errors)
+
+    if errors:
+        print("Configuration validation failed:", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 1
+
+    print("Configuration validation passed.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
