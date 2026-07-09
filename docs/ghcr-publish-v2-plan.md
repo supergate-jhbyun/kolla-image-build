@@ -78,7 +78,8 @@ ghcr.io/<owner>/kolla-image-build/<image>:2025.1-rocky-9-arm64
 
 1. Add a dry-run command generator that turns `config/build-matrix.json` and
    `config/profiles/<name>.json` into the exact `kolla-build` and manifest
-   commands without executing them.
+   commands without executing them. The profile must contain concrete Kolla
+   image names and their Kolla-Ansible `*_image_full` variables.
 2. Add tests for the generated tag names and command plan.
 3. Add `publish.yml` with `workflow_dispatch`, `contents: read`, and
    `packages: write`.
@@ -86,8 +87,11 @@ ghcr.io/<owner>/kolla-image-build/<image>:2025.1-rocky-9-arm64
 5. Enable `dry_run: false` for one low-risk image from the `core` profile.
 6. Verify anonymous pull for public GHCR packages after package visibility is
    set correctly.
-7. Promote by recording the final multi-arch manifest digest, not by relying on
-   a mutable environment tag.
+7. Write `publish-summary-<release>-<distro>-<version>.json` after publish.
+8. Generate `kolla-ansible-image-lock-<release>-<distro>-<version>.yml` from
+   the publish summary.
+9. Promote by copying the staging-verified digest-pinned lock, not by relying
+   on a mutable environment tag.
 
 ## Acceptance Criteria
 
@@ -97,6 +101,9 @@ ghcr.io/<owner>/kolla-image-build/<image>:2025.1-rocky-9-arm64
 - No GHCR package is pushed unless `dry_run` is explicitly false.
 - Final artifact includes image name, deploy tag, amd64 digest, arm64 digest,
   and multi-arch manifest digest.
+- Generated staging and production locks contain only
+  `tag@sha256:<manifest-digest>` refs.
+- Rocky and Ubuntu locks cannot be mixed or validated against the wrong distro.
 
 See [build-readiness.md](build-readiness.md) for runner requirements, concrete
 command shapes, manifest commands, and the GHCR preflight checklist.

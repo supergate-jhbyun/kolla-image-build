@@ -90,6 +90,40 @@ The workflow artifact should include:
 - `docker buildx imagetools create --metadata-file` output.
 - build and inspect logs for each per-architecture ref.
 
+For a full profile publish, write the digest set to:
+
+```text
+artifacts/publish-summary-2025.1-rocky-9.json
+artifacts/publish-summary-2025.1-ubuntu-24.04.json
+```
+
+Then render the Kolla-Ansible lock:
+
+```bash
+python3 scripts/generate-lock.py \
+  --publish-summary artifacts/publish-summary-2025.1-rocky-9.json \
+  --profile core \
+  --release 2025.1 \
+  --distro rocky \
+  --distro-version 9 \
+  --output artifacts/kolla-ansible-image-lock-2025.1-rocky-9.yml
+```
+
+Validate stg/prod locks before using them:
+
+```bash
+python3 scripts/validate-lock.py \
+  --environment stg \
+  --profile core \
+  --release 2025.1 \
+  --distro rocky \
+  --distro-version 9 \
+  artifacts/kolla-ansible-image-lock-2025.1-rocky-9.yml
+```
+
+Staging and production validation rejects tag-only refs. Production promotion
+uses the exact lock file that passed staging smoke validation.
+
 ## GHCR Checklist
 
 - Repository is published from the intended organization-owned namespace.

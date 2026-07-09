@@ -80,13 +80,29 @@ def manifest_metadata_file(image: str, deploy_tag: str) -> str:
     return f"artifacts/manifests/{image}-{deploy_tag}.json"
 
 
-def profile_images(profile: dict[str, Any], image_filter: str | None) -> list[str]:
+def publish_summary_file(deploy_tag: str) -> str:
+    return f"artifacts/publish-summary-{deploy_tag}.json"
+
+
+def kolla_ansible_lock_file(deploy_tag: str) -> str:
+    return f"artifacts/kolla-ansible-image-lock-{deploy_tag}.yml"
+
+
+def environment_lock_files(profile_name: str, deploy_tag: str) -> dict[str, str]:
+    return {
+        environment: f"locks/{environment}/{profile_name}-{deploy_tag}.yml"
+        for environment in ("dev", "stg", "prod")
+    }
+
+
+def profile_images(profile: dict[str, Any], image_filter: str | None) -> list[dict[str, Any]]:
     images = profile["images"]
     if image_filter is None:
         return images
-    if image_filter not in images:
+    image_names = {entry["name"] for entry in images}
+    if image_filter not in image_names:
         raise ValueError(f"image does not exist in profile {profile['name']}: {image_filter}")
-    return [image_filter]
+    return [entry for entry in images if entry["name"] == image_filter]
 
 
 def kolla_build_command(
@@ -139,7 +155,8 @@ def build_plan(
     selected_images = profile_images(profile, image_filter)
 
     images = []
-    for image in selected_images:
+    for image_entry in selected_images:
+        image = image_entry["name"]
         architectures = []
         for arch in matrix["architectures"]:
             arch_tag = render_tag(tag_policy["arch_tag_template"], release, distro, arch)
@@ -173,6 +190,7 @@ def build_plan(
         images.append(
             {
                 "image": image,
+                "kolla_ansible_variables": image_entry["kolla_ansible_variables"],
                 "deploy_tag": deploy_tag,
                 "deploy_ref": deploy_ref,
                 "expected_ghcr_ref": deploy_ref,
@@ -211,6 +229,9 @@ def build_plan(
         "registry": registry,
         "owner": owner,
         "repository": repository,
+        "publish_summary_file": publish_summary_file(deploy_tag),
+        "kolla_ansible_lock_file": kolla_ansible_lock_file(deploy_tag),
+        "environment_lock_files": environment_lock_files(profile["name"], deploy_tag),
         "images": images,
     }
 

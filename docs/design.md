@@ -12,7 +12,7 @@ automation.
 
 ## Naming Policy
 
-The deployment interface is an architecture-neutral tag:
+The build and publish interface is an architecture-neutral tag:
 
 ```text
 ghcr.io/<owner>/kolla-image-build/<image>:<release>-<distro>-<distro_version>
@@ -32,10 +32,21 @@ Architecture-specific tags are only for debugging and reproducibility:
 <release>-<distro>-<distro_version>-arm64
 ```
 
-Kolla-Ansible should point to the architecture-neutral tag through
-`openstack_tag`. This keeps deploy configuration aligned with the normal Kolla
+Dev environments may point to the architecture-neutral tag through
+`openstack_tag`. This keeps fast iteration aligned with the normal Kolla
 registry and namespace model while letting the registry choose the correct
 platform image.
+
+Staging and production must use generated Kolla-Ansible `*_image_full`
+overrides with the manifest digest attached:
+
+```text
+ghcr.io/supergate-jhbyun/kolla-image-build/<image>:2025.1-rocky-9@sha256:<manifest-digest>
+```
+
+The lock generator maps concrete Kolla image names to actual Kolla-Ansible
+variables such as `glance_api_image_full`, `nova_api_image_full`, and
+`nova_compute_image_full`.
 
 ## Multi-Architecture Manifest Policy
 
@@ -50,8 +61,30 @@ inspect final manifest
 record manifest digest
 ```
 
-Promotion between environments should use the final manifest digest, not a
-mutable environment tag such as `dev`, `staging`, or `prod`.
+Promotion between environments uses the final manifest digest, not a mutable
+environment tag such as `dev`, `staging`, or `prod`.
+
+## Environment Lock Policy
+
+Expected lock paths are:
+
+```text
+locks/dev/core-2025.1-rocky-9.yml
+locks/dev/core-2025.1-ubuntu-24.04.yml
+locks/stg/core-2025.1-rocky-9.yml
+locks/stg/core-2025.1-ubuntu-24.04.yml
+locks/prod/core-2025.1-rocky-9.yml
+locks/prod/core-2025.1-ubuntu-24.04.yml
+```
+
+Dev may use tag-only refs for speed, but generated dev locks should still be
+digest-pinned when reproducibility is being tested. Staging and production lock
+validation fails if any ref is tag-only or if a Rocky and Ubuntu tag are mixed
+in the same lock.
+
+Production promotion is a copy of the staging-verified digest set for the full
+`core + release + distro-version` tuple. Rollback is a restore of a previous
+production lock file, not a rebuild or tag reinterpretation.
 
 ## Namespace and Repository Transfer Policy
 

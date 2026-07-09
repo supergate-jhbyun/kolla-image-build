@@ -138,7 +138,13 @@ example `kolla-publish-keystone-2025.1-rocky-9`. Inspect:
 - `artifacts/manifests/keystone-2025.1-rocky-9.json` for Docker manifest
   metadata;
 - `artifacts/manifests/smoke-publish-summary.json` for the digest summary
-  assembled by the workflow.
+  assembled by the workflow;
+- `artifacts/publish-summary-2025.1-rocky-9.json` for the publish summary
+  shape consumed by `scripts/generate-lock.py`.
+
+This first smoke publish is not a staging or production promotion by itself. A
+promotable lock must be generated from a full `core` profile publish summary
+with `scripts/generate-lock.py` and validated with `scripts/validate-lock.py`.
 
 ## Stop Conditions
 

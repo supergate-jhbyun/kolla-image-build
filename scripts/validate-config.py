@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import string
 import sys
 from pathlib import Path
@@ -19,6 +20,8 @@ ALLOWED_DISTROS = {"rocky", "ubuntu"}
 ALLOWED_ARCHITECTURES = {"amd64", "arm64"}
 REQUIRED_TEMPLATE_FIELDS = {"release", "distro", "distro_version"}
 ARCH_TEMPLATE_FIELDS = REQUIRED_TEMPLATE_FIELDS | {"arch"}
+IMAGE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+KOLLA_IMAGE_VARIABLE_RE = re.compile(r"^[a-z0-9_]+_image_full$")
 
 
 def load_json(path: Path) -> Any:
@@ -133,11 +136,52 @@ def validate_profiles(matrix: dict[str, Any], errors: list[str]) -> None:
             errors.append(f"{profile_path.relative_to(ROOT)} images must be a non-empty list")
             continue
 
-        for image in images:
-            if not isinstance(image, str) or not image:
+        image_names: set[str] = set()
+        kolla_variables: set[str] = set()
+        for index, image in enumerate(images):
+            if not isinstance(image, dict):
                 errors.append(
-                    f"{profile_path.relative_to(ROOT)} image entries must be non-empty strings"
+                    f"{profile_path.relative_to(ROOT)} images[{index}] must be an object"
                 )
+                continue
+
+            name = image.get("name")
+            if not isinstance(name, str) or not IMAGE_NAME_RE.fullmatch(name):
+                errors.append(
+                    f"{profile_path.relative_to(ROOT)} images[{index}].name "
+                    "must be a Kolla image name"
+                )
+            elif name in image_names:
+                errors.append(
+                    f"{profile_path.relative_to(ROOT)} duplicate image name: {name}"
+                )
+            else:
+                image_names.add(name)
+
+            variables = image.get("kolla_ansible_variables")
+            if not isinstance(variables, list) or not variables:
+                errors.append(
+                    f"{profile_path.relative_to(ROOT)} images[{index}]."
+                    "kolla_ansible_variables must be a non-empty list"
+                )
+                continue
+
+            for variable in variables:
+                if not isinstance(variable, str) or not KOLLA_IMAGE_VARIABLE_RE.fullmatch(
+                    variable
+                ):
+                    errors.append(
+                        f"{profile_path.relative_to(ROOT)} images[{index}] "
+                        f"has invalid Kolla-Ansible variable: {variable!r}"
+                    )
+                    continue
+                if variable in kolla_variables:
+                    errors.append(
+                        f"{profile_path.relative_to(ROOT)} duplicate "
+                        f"Kolla-Ansible variable: {variable}"
+                    )
+                    continue
+                kolla_variables.add(variable)
 
 
 def main() -> int:

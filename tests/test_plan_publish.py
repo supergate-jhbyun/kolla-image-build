@@ -48,13 +48,41 @@ class PlanPublishTest(unittest.TestCase):
             image_names,
             {
                 "keystone",
-                "glance",
-                "placement",
-                "nova",
-                "neutron",
-                "heat",
+                "keystone-fernet",
+                "keystone-ssh",
+                "glance-api",
+                "placement-api",
+                "nova-api",
+                "nova-scheduler",
+                "nova-conductor",
+                "nova-compute",
+                "nova-libvirt",
+                "nova-ssh",
+                "nova-novncproxy",
+                "neutron-server",
+                "neutron-dhcp-agent",
+                "neutron-l3-agent",
+                "neutron-metadata-agent",
+                "neutron-openvswitch-agent",
+                "heat-api",
+                "heat-api-cfn",
+                "heat-engine",
                 "horizon",
             },
+        )
+
+    def test_core_profile_includes_kolla_ansible_variables(self) -> None:
+        plan = run_plan()
+        variables_by_image = {
+            image["image"]: image["kolla_ansible_variables"] for image in plan["images"]
+        }
+
+        self.assertEqual(variables_by_image["keystone"], ["keystone_image_full"])
+        self.assertEqual(variables_by_image["glance-api"], ["glance_api_image_full"])
+        self.assertEqual(variables_by_image["nova-compute"], ["nova_compute_image_full"])
+        self.assertEqual(
+            variables_by_image["nova-conductor"],
+            ["nova_super_conductor_image_full", "nova_conductor_image_full"],
         )
 
     def test_image_filter_keeps_only_requested_image(self) -> None:
@@ -73,6 +101,16 @@ class PlanPublishTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 2)
         self.assertIn("image does not exist in profile core: missing-image", result.stderr)
+
+    def test_filter_uses_actual_kolla_image_name(self) -> None:
+        plan = run_plan("--image", "glance-api")
+
+        self.assertEqual(plan["image_filter"], "glance-api")
+        self.assertEqual([image["image"] for image in plan["images"]], ["glance-api"])
+        self.assertEqual(
+            plan["images"][0]["kolla_ansible_variables"],
+            ["glance_api_image_full"],
+        )
 
     def test_deploy_tags_do_not_include_arch(self) -> None:
         plan = run_plan()
@@ -104,6 +142,26 @@ class PlanPublishTest(unittest.TestCase):
         self.assertEqual(
             first_image["architectures"][0]["expected_ghcr_ref"],
             "ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9-amd64",
+        )
+
+    def test_publish_and_lock_artifact_paths_are_rendered(self) -> None:
+        plan = run_plan()
+
+        self.assertEqual(
+            plan["publish_summary_file"],
+            "artifacts/publish-summary-2025.1-rocky-9.json",
+        )
+        self.assertEqual(
+            plan["kolla_ansible_lock_file"],
+            "artifacts/kolla-ansible-image-lock-2025.1-rocky-9.yml",
+        )
+        self.assertEqual(
+            plan["environment_lock_files"],
+            {
+                "dev": "locks/dev/core-2025.1-rocky-9.yml",
+                "stg": "locks/stg/core-2025.1-rocky-9.yml",
+                "prod": "locks/prod/core-2025.1-rocky-9.yml",
+            },
         )
 
     def test_kolla_build_commands_are_executable_arrays(self) -> None:
