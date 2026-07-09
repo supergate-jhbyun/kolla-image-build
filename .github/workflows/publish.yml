@@ -34,12 +34,13 @@ on:
         options:
           - core
       image:
-        description: Smoke publish image
+        description: Smoke publish image, or all for a full-profile dry run
         required: true
         type: choice
         default: keystone
         options:
           - keystone
+          - all
       dry_run:
         description: Print the publish plan without building or pushing
         required: true
@@ -74,13 +75,17 @@ jobs:
       - name: Render publish plan
         run: |
           mkdir -p artifacts/logs artifacts/manifests artifacts/plan
-          python3 scripts/plan-publish.py \
-            --profile '${{ inputs.profile }}' \
-            --image '${{ inputs.image }}' \
-            --release '${{ inputs.release }}' \
-            --distro '${{ inputs.distro }}' \
-            --distro-version '${{ inputs.distro_version }}' \
-            --dry-run | tee artifacts/plan/publish-plan.json
+          plan_args=(
+            --profile '${{ inputs.profile }}'
+            --release '${{ inputs.release }}'
+            --distro '${{ inputs.distro }}'
+            --distro-version '${{ inputs.distro_version }}'
+            --dry-run
+          )
+          if [ '${{ inputs.image }}' != 'all' ]; then
+            plan_args+=(--image '${{ inputs.image }}')
+          fi
+          python3 scripts/plan-publish.py "${plan_args[@]}" | tee artifacts/plan/publish-plan.json
 
       - name: Validate smoke publish approval
         if: ${{ !inputs.dry_run }}
