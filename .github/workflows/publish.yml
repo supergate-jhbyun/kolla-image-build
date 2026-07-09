@@ -62,8 +62,10 @@ env:
 
 jobs:
   publish-plan:
-    name: Publish smoke image
+    name: Render publish plan
     runs-on: ubuntu-latest
+    outputs:
+      build_matrix: ${{ steps.build-matrix.outputs.build_matrix }}
 
     steps:
       - name: Check out repository
@@ -86,6 +88,26 @@ jobs:
             plan_args+=(--image '${{ inputs.image }}')
           fi
           python3 scripts/plan-publish.py "${plan_args[@]}" | tee artifacts/plan/publish-plan.json
+
+      - name: Render image architecture matrix
+        id: build-matrix
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          plan = json.loads(pathlib.Path("artifacts/plan/publish-plan.json").read_text(encoding="utf-8"))
+          matrix = {
+              "include": [
+                  {"image": image["image"], "arch": arch["arch"]}
+                  for image in plan["images"]
+                  for arch in image["architectures"]
+              ]
+          }
+          with pathlib.Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"build_matrix={json.dumps(matrix, sort_keys=True)}\n")
+          PY
 
       - name: Validate smoke publish approval
         if: ${{ !inputs.dry_run }}
@@ -113,18 +135,48 @@ jobs:
             exit 1
           fi
 
-      - name: Set up QEMU for arm64 smoke build
+      - name: Upload dry-run publish artifacts
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kolla-publish-${{ inputs.image }}-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
+          path: artifacts/
+          if-no-files-found: error
+
+      - name: Upload publish plan artifact
         if: ${{ !inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kolla-publish-plan-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
+          path: artifacts/plan/
+          if-no-files-found: error
+
+  build-image:
+    name: Build ${{ matrix.image }} ${{ matrix.arch }}
+    if: ${{ !inputs.dry_run }}
+    needs: publish-plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.publish-plan.outputs.build_matrix) }}
+
+    steps:
+      - name: Download publish plan
+        uses: actions/download-artifact@v4
+        with:
+          name: kolla-publish-plan-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
+          path: artifacts/plan
+
+      - name: Set up QEMU for arm64 smoke build
+        if: ${{ matrix.arch == 'arm64' }}
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
 
       - name: Set up Docker Buildx builder
-        if: ${{ !inputs.dry_run }}
         uses: docker/setup-buildx-action@v3
 
       - name: Install Kolla tooling
-        if: ${{ !inputs.dry_run }}
         run: |
           python3 -m venv .venv
           . .venv/bin/activate
@@ -133,7 +185,6 @@ jobs:
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Check publish tooling
-        if: ${{ !inputs.dry_run }}
         run: |
           command -v python3
           command -v docker
@@ -144,13 +195,119 @@ jobs:
           kolla-build --version || true
 
       - name: Log in to GHCR
-        if: ${{ !inputs.dry_run }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
 
-      - name: Execute smoke publish plan
-        if: ${{ !inputs.dry_run }}
+      - name: Build and inspect architecture image
+        env:
+          PLAN_PATH: artifacts/plan/publish-plan.json
+          IMAGE: ${{ matrix.image }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import shlex
+          import subprocess
+
+          plan_path = pathlib.Path(os.environ["PLAN_PATH"])
+          plan = json.loads(plan_path.read_text(encoding="utf-8"))
+          image_name = os.environ["IMAGE"]
+          arch_name = os.environ["ARCH"]
+          image = next((entry for entry in plan["images"] if entry["image"] == image_name), None)
+          if image is None:
+              raise SystemExit(f"image not found in publish plan: {image_name}")
+          arch = next((entry for entry in image["architectures"] if entry["arch"] == arch_name), None)
+          if arch is None:
+              raise SystemExit(f"architecture not found in publish plan: {image_name}/{arch_name}")
+
+          logs_dir = pathlib.Path("artifacts/logs")
+          arch_dir = pathlib.Path("artifacts/arch")
+          logs_dir.mkdir(parents=True, exist_ok=True)
+          arch_dir.mkdir(parents=True, exist_ok=True)
+
+          def run_command(name, command, log_path):
+              print(f"Running {name}: {' '.join(shlex.quote(part) for part in command)}")
+              with log_path.open("w", encoding="utf-8") as log_file:
+                  log_file.write("$ " + " ".join(shlex.quote(part) for part in command) + "\n")
+                  log_file.flush()
+                  subprocess.run(command, check=True, stdout=log_file, stderr=subprocess.STDOUT)
+
+          build_log = logs_dir / f"{image_name}-{arch_name}-build.log"
+          inspect_log = logs_dir / f"{image_name}-{arch_name}-inspect.log"
+          run_command(
+              f"build {image_name} {arch_name}",
+              arch["commands"]["kolla_build_push"],
+              build_log,
+          )
+          inspect_command = ["docker", "buildx", "imagetools", "inspect", arch["arch_ref"]]
+          run_command(
+              f"inspect {image_name} {arch_name}",
+              inspect_command,
+              inspect_log,
+          )
+          (arch_dir / f"{image_name}-{arch_name}.json").write_text(
+              json.dumps(
+                  {
+                      "image": image_name,
+                      "arch": arch_name,
+                      "arch_ref": arch["arch_ref"],
+                      "arch_tag": arch["arch_tag"],
+                      "build_log": str(build_log),
+                      "inspect_log": str(inspect_log),
+                  },
+                  indent=2,
+                  sort_keys=True,
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload architecture build artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kolla-build-${{ matrix.image }}-${{ matrix.arch }}-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
+          path: artifacts/
+          if-no-files-found: error
+
+  finalize-publish:
+    name: Finalize smoke manifest
+    if: ${{ !inputs.dry_run }}
+    needs:
+      - publish-plan
+      - build-image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download publish plan
+        uses: actions/download-artifact@v4
+        with:
+          name: kolla-publish-plan-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
+          path: artifacts/plan
+
+      - name: Download architecture build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: kolla-build-*-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
+          path: artifacts
+          merge-multiple: true
+
+      - name: Set up Docker Buildx builder
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+
+      - name: Create manifest and publish summary
         env:
           PLAN_PATH: artifacts/plan/publish-plan.json
         run: |
@@ -167,20 +324,12 @@ jobs:
           if len(images) != 1 or images[0]["image"] != "keystone":
               raise SystemExit("smoke publish only supports one keystone image")
 
-          image = images[0]
           logs_dir = pathlib.Path("artifacts/logs")
+          arch_dir = pathlib.Path("artifacts/arch")
           manifests_dir = pathlib.Path("artifacts/manifests")
           logs_dir.mkdir(parents=True, exist_ok=True)
           manifests_dir.mkdir(parents=True, exist_ok=True)
 
-          summary = {
-              "image": image["image"],
-              "kolla_ansible_variables": image["kolla_ansible_variables"],
-              "deploy_ref": image["deploy_ref"],
-              "deploy_tag": image["deploy_tag"],
-              "manifest_metadata_file": image["manifest_metadata_file"],
-              "architectures": [],
-          }
           publish_summary = {
               "release": plan["release"],
               "distro": plan["distro"],
@@ -199,69 +348,67 @@ jobs:
                   log_file.flush()
                   subprocess.run(command, check=True, stdout=log_file, stderr=subprocess.STDOUT)
 
-          for arch in image["architectures"]:
-              arch_name = arch["arch"]
-              run_command(
-                  f"build {arch_name}",
-                  arch["commands"]["kolla_build_push"],
-                  logs_dir / f"keystone-{arch_name}-build.log",
-              )
-              inspect_command = ["docker", "buildx", "imagetools", "inspect", arch["arch_ref"]]
-              run_command(
-                  f"inspect {arch_name}",
-                  inspect_command,
-                  logs_dir / f"keystone-{arch_name}-inspect.log",
-              )
-              summary["architectures"].append(
-                  {
-                      "arch": arch_name,
-                      "arch_ref": arch["arch_ref"],
-                      "arch_tag": arch["arch_tag"],
-                      "inspect_log": str(logs_dir / f"keystone-{arch_name}-inspect.log"),
-                  }
-              )
-
-          run_command(
-              "create manifest",
-              image["commands"]["manifest_create"],
-              logs_dir / "keystone-manifest-create.log",
-          )
-          run_command(
-              "inspect manifest",
-              image["commands"]["manifest_inspect"],
-              logs_dir / "keystone-manifest-inspect.log",
-          )
-
-          metadata_path = pathlib.Path(image["manifest_metadata_file"])
-          if not metadata_path.exists():
-              raise SystemExit(f"manifest metadata not found: {metadata_path}")
-
-          manifest_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-          manifest_digest = manifest_metadata.get("containerimage.digest")
-          if manifest_digest is None:
-              descriptor = manifest_metadata.get("containerimage.descriptor")
-              if isinstance(descriptor, dict):
-                  manifest_digest = descriptor.get("digest")
-          if not isinstance(manifest_digest, str) or not manifest_digest.startswith("sha256:"):
-              raise SystemExit("manifest metadata is missing containerimage.digest")
-
-          summary["manifest_metadata"] = manifest_metadata
-          summary["manifest_digest"] = manifest_digest
-          publish_summary["images"].append(
-              {
-                  "image": image["image"],
+          for image in images:
+              image_name = image["image"]
+              summary = {
+                  "image": image_name,
                   "kolla_ansible_variables": image["kolla_ansible_variables"],
                   "deploy_ref": image["deploy_ref"],
                   "deploy_tag": image["deploy_tag"],
-                  "manifest_digest": manifest_digest,
-                  "architectures": summary["architectures"],
+                  "manifest_metadata_file": image["manifest_metadata_file"],
+                  "architectures": [],
               }
-          )
+              for arch in image["architectures"]:
+                  arch_name = arch["arch"]
+                  arch_summary_path = arch_dir / f"{image_name}-{arch_name}.json"
+                  if not arch_summary_path.exists():
+                      raise SystemExit(f"architecture summary not found: {arch_summary_path}")
+                  summary["architectures"].append(
+                      json.loads(arch_summary_path.read_text(encoding="utf-8"))
+                  )
 
-          (manifests_dir / "smoke-publish-summary.json").write_text(
-              json.dumps(summary, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
+              run_command(
+                  f"create manifest {image_name}",
+                  image["commands"]["manifest_create"],
+                  logs_dir / f"{image_name}-manifest-create.log",
+              )
+              run_command(
+                  f"inspect manifest {image_name}",
+                  image["commands"]["manifest_inspect"],
+                  logs_dir / f"{image_name}-manifest-inspect.log",
+              )
+
+              metadata_path = pathlib.Path(image["manifest_metadata_file"])
+              if not metadata_path.exists():
+                  raise SystemExit(f"manifest metadata not found: {metadata_path}")
+
+              manifest_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+              manifest_digest = manifest_metadata.get("containerimage.digest")
+              if manifest_digest is None:
+                  descriptor = manifest_metadata.get("containerimage.descriptor")
+                  if isinstance(descriptor, dict):
+                      manifest_digest = descriptor.get("digest")
+              if not isinstance(manifest_digest, str) or not manifest_digest.startswith("sha256:"):
+                  raise SystemExit("manifest metadata is missing containerimage.digest")
+
+              summary["manifest_metadata"] = manifest_metadata
+              summary["manifest_digest"] = manifest_digest
+              publish_summary["images"].append(
+                  {
+                      "image": image_name,
+                      "kolla_ansible_variables": image["kolla_ansible_variables"],
+                      "deploy_ref": image["deploy_ref"],
+                      "deploy_tag": image["deploy_tag"],
+                      "manifest_digest": manifest_digest,
+                      "architectures": summary["architectures"],
+                  }
+              )
+
+              (manifests_dir / "smoke-publish-summary.json").write_text(
+                  json.dumps(summary, indent=2, sort_keys=True) + "\n",
+                  encoding="utf-8",
+              )
+
           pathlib.Path(plan["publish_summary_file"]).write_text(
               json.dumps(publish_summary, indent=2, sort_keys=True) + "\n",
               encoding="utf-8",
@@ -269,7 +416,6 @@ jobs:
           PY
 
       - name: Validate smoke publish summary
-        if: ${{ !inputs.dry_run }}
         run: |
           python3 scripts/validate-publish-summary.py \
             --publish-summary 'artifacts/publish-summary-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}.json' \

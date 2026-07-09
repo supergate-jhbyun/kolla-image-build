@@ -34,6 +34,26 @@ class PublishWorkflowTest(unittest.TestCase):
         self.assertIn("--allow-partial", workflow)
         self.assertIn("--image '${{ inputs.image }}'", workflow)
 
+    def test_real_publish_uses_image_architecture_matrix(self) -> None:
+        workflow = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("name: Render image architecture matrix", workflow)
+        self.assertIn('"image": image["image"], "arch": arch["arch"]', workflow)
+        self.assertIn("build_matrix: ${{ steps.build-matrix.outputs.build_matrix }}", workflow)
+        self.assertIn("name: Build ${{ matrix.image }} ${{ matrix.arch }}", workflow)
+        self.assertIn("matrix: ${{ fromJson(needs.publish-plan.outputs.build_matrix) }}", workflow)
+        self.assertIn("if: ${{ matrix.arch == 'arm64' }}", workflow)
+
+    def test_real_publish_finalizes_manifest_after_architecture_builds(self) -> None:
+        workflow = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("finalize-publish:", workflow)
+        self.assertIn("name: Finalize smoke manifest", workflow)
+        self.assertIn("- build-image", workflow)
+        self.assertIn("pattern: kolla-build-*-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}", workflow)
+        self.assertIn("merge-multiple: true", workflow)
+        self.assertIn('logs_dir / f"{image_name}-manifest-create.log"', workflow)
+
     def test_real_publish_accepts_buildx_descriptor_metadata_digest(self) -> None:
         workflow = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 

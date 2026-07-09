@@ -50,12 +50,13 @@ variables such as `glance_api_image_full`, `nova_api_image_full`, and
 
 ## Multi-Architecture Manifest Policy
 
-Future publish workflows should produce this sequence:
+Publish workflows should produce this sequence:
 
 ```text
-build per-arch image
-push per-arch debug tag
-inspect pushed image
+render selected image/architecture matrix
+build per-arch image jobs
+push per-arch debug tags
+inspect pushed images
 create architecture-neutral manifest tag
 inspect final manifest
 record manifest digest

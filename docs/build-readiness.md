@@ -17,9 +17,11 @@ workflow guard with real Kolla image build and GHCR publish steps.
 Kolla supports Docker and Podman. The first publish path uses Docker because the
 manifest plan uses `docker buildx imagetools`.
 
-The GitHub workflow installs `kolla==20.4.0` and the Python Docker SDK for the
-2025.1 Epoxy smoke publish, then prepares QEMU plus a Buildx builder before
-running `dry_run: false`.
+For `dry_run: false`, the GitHub workflow renders one command plan, fans out
+the selected image and architecture pairs as matrix jobs, installs
+`kolla==20.4.0` plus the Python Docker SDK in each build job, and then runs a
+final manifest job after all per-architecture refs exist. QEMU is only prepared
+for arm64 build jobs.
 
 ## Command Plan Shape
 
@@ -57,13 +59,13 @@ kolla-build \
 
 The arm64 command uses `--base-arch aarch64` and `--platform linux/arm64`.
 
-Do not create the architecture-neutral deploy tag until both per-architecture
-refs exist in GHCR.
+Do not create the architecture-neutral deploy tag until all per-architecture
+matrix jobs have pushed their refs to GHCR.
 
 ## Manifest Plan
 
-Create the multi-arch manifest only after both architecture-specific refs have
-been pushed:
+Create the multi-arch manifest only after both architecture-specific matrix
+jobs have pushed their refs:
 
 ```bash
 docker buildx imagetools create \
