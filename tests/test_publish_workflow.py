@@ -34,6 +34,13 @@ class PublishWorkflowTest(unittest.TestCase):
         self.assertIn("--allow-partial", workflow)
         self.assertIn("--image '${{ inputs.image }}'", workflow)
 
+    def test_real_publish_accepts_buildx_descriptor_metadata_digest(self) -> None:
+        workflow = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn('manifest_metadata.get("containerimage.digest")', workflow)
+        self.assertIn('manifest_metadata.get("containerimage.descriptor")', workflow)
+        self.assertIn('manifest_digest = descriptor.get("digest")', workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
