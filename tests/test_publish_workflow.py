@@ -38,11 +38,12 @@ class PublishWorkflowTest(unittest.TestCase):
         workflow = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("name: Render image architecture matrix", workflow)
-        self.assertIn('"image": image["image"], "arch": arch["arch"]', workflow)
+        self.assertIn('"runner": "ubuntu-24.04-arm" if arch["arch"] == "arm64" else "ubuntu-24.04"', workflow)
         self.assertIn("build_matrix: ${{ steps.build-matrix.outputs.build_matrix }}", workflow)
         self.assertIn("name: Build ${{ matrix.image }} ${{ matrix.arch }}", workflow)
+        self.assertIn("runs-on: ${{ matrix.runner }}", workflow)
         self.assertIn("matrix: ${{ fromJson(needs.publish-plan.outputs.build_matrix) }}", workflow)
-        self.assertIn("if: ${{ matrix.arch == 'arm64' }}", workflow)
+        self.assertNotIn("docker/setup-qemu-action", workflow)
 
     def test_real_publish_finalizes_manifest_after_architecture_builds(self) -> None:
         workflow = PUBLISH_WORKFLOW.read_text(encoding="utf-8")

@@ -100,7 +100,11 @@ jobs:
           plan = json.loads(pathlib.Path("artifacts/plan/publish-plan.json").read_text(encoding="utf-8"))
           matrix = {
               "include": [
-                  {"image": image["image"], "arch": arch["arch"]}
+                  {
+                      "image": image["image"],
+                      "arch": arch["arch"],
+                      "runner": "ubuntu-24.04-arm" if arch["arch"] == "arm64" else "ubuntu-24.04",
+                  }
                   for image in plan["images"]
                   for arch in image["architectures"]
               ]
@@ -155,7 +159,7 @@ jobs:
     name: Build ${{ matrix.image }} ${{ matrix.arch }}
     if: ${{ !inputs.dry_run }}
     needs: publish-plan
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.publish-plan.outputs.build_matrix) }}
@@ -166,12 +170,6 @@ jobs:
         with:
           name: kolla-publish-plan-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
           path: artifacts/plan
-
-      - name: Set up QEMU for arm64 smoke build
-        if: ${{ matrix.arch == 'arm64' }}
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
 
       - name: Set up Docker Buildx builder
         uses: docker/setup-buildx-action@v3

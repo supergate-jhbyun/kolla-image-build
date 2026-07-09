@@ -20,8 +20,8 @@ manifest plan uses `docker buildx imagetools`.
 For `dry_run: false`, the GitHub workflow renders one command plan, fans out
 the selected image and architecture pairs as matrix jobs, installs
 `kolla==20.4.0` plus the Python Docker SDK in each build job, and then runs a
-final manifest job after all per-architecture refs exist. QEMU is only prepared
-for arm64 build jobs.
+final manifest job after all per-architecture refs exist. The amd64 job runs on
+`ubuntu-24.04`, and the arm64 job runs natively on `ubuntu-24.04-arm`.
 
 ## Command Plan Shape
 
