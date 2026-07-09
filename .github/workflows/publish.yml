@@ -264,6 +264,18 @@ jobs:
           )
           PY
 
+      - name: Validate smoke publish summary
+        if: ${{ !inputs.dry_run }}
+        run: |
+          python3 scripts/validate-publish-summary.py \
+            --publish-summary 'artifacts/publish-summary-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}.json' \
+            --profile '${{ inputs.profile }}' \
+            --release '${{ inputs.release }}' \
+            --distro '${{ inputs.distro }}' \
+            --distro-version '${{ inputs.distro_version }}' \
+            --allow-partial \
+            --image '${{ inputs.image }}'
+
       - name: Upload publish artifacts
         if: ${{ always() }}
         uses: actions/upload-artifact@v4

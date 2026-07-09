@@ -26,6 +26,14 @@ class PublishWorkflowTest(unittest.TestCase):
             workflow,
         )
 
+    def test_real_publish_validates_smoke_summary_artifact(self) -> None:
+        workflow = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("name: Validate smoke publish summary", workflow)
+        self.assertIn("scripts/validate-publish-summary.py", workflow)
+        self.assertIn("--allow-partial", workflow)
+        self.assertIn("--image '${{ inputs.image }}'", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
