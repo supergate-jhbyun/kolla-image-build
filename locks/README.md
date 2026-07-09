@@ -42,3 +42,35 @@ python3 scripts/validate-lock.py \
 
 Production promotion should copy the staging-verified full digest set. Rollback
 should restore an earlier production lock file.
+
+Before copying a staging lock to production, compare the files:
+
+```bash
+python3 scripts/compare-locks.py \
+  --profile core \
+  --release 2025.1 \
+  --distro rocky \
+  --distro-version 9 \
+  locks/stg/core-2025.1-rocky-9.yml \
+  locks/prod/core-2025.1-rocky-9.yml
+```
+
+For rollback, restore the previous production lock file, then run both:
+
+```bash
+python3 scripts/validate-lock.py \
+  --environment prod \
+  --profile core \
+  --release 2025.1 \
+  --distro rocky \
+  --distro-version 9 \
+  locks/prod/core-2025.1-rocky-9.yml
+
+python3 scripts/compare-locks.py \
+  --profile core \
+  --release 2025.1 \
+  --distro rocky \
+  --distro-version 9 \
+  locks/prod/core-2025.1-rocky-9.previous.yml \
+  locks/prod/core-2025.1-rocky-9.yml
+```
