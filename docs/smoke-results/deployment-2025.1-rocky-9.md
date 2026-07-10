@@ -258,5 +258,10 @@ token creation returned HTTP 201 with a subject token, and authenticated
 discovery returned HTTP 200. All user resource counts remained zero. The
 successful pull and canary logs contain zero `web01:5000` references.
 
+The compatibility patch is recorded in repository commit `0e6ab60`, and the
+Gate B result is recorded in commit `0c67aba`. Push validation run
+<https://github.com/supergate-jhbyun/kolla-image-build/actions/runs/29073281768>
+completed successfully with one of one jobs passing and zero annotations.
+
 Zot remains running. Stopping it, destroying the deployment, and deploying the
 remaining 65 containers are outside Gate B and require their separate gates.
