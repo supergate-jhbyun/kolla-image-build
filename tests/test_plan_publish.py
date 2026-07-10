@@ -111,6 +111,54 @@ class PlanPublishTest(unittest.TestCase):
             plan["images"][0]["kolla_ansible_variables"],
             ["glance_api_image_full"],
         )
+        self.assertEqual(
+            plan["build"]["parents"]["images"],
+            ["base", "openstack-base", "glance-base"],
+        )
+        self.assertEqual(
+            [group["name"] for group in plan["build"]["groups"]],
+            ["glance"],
+        )
+
+    def test_full_core_build_groups_cover_each_image_once(self) -> None:
+        plan = run_plan()
+        groups = plan["build"]["groups"]
+
+        self.assertEqual(
+            [group["name"] for group in groups],
+            [
+                "identity",
+                "glance",
+                "placement",
+                "compute",
+                "network",
+                "orchestration",
+                "dashboard",
+            ],
+        )
+        self.assertEqual(
+            plan["build"]["parents"]["images"],
+            [
+                "base",
+                "openstack-base",
+                "keystone-base",
+                "glance-base",
+                "placement-base",
+                "nova-base",
+                "neutron-base",
+                "heat-base",
+            ],
+        )
+        grouped_images = [image for group in groups for image in group["images"]]
+        self.assertEqual(len(grouped_images), 21)
+        self.assertEqual(
+            set(grouped_images),
+            {image["image"] for image in plan["images"]},
+        )
+        self.assertEqual(
+            sum(len(group["architectures"]) for group in groups),
+            14,
+        )
 
     def test_deploy_tags_do_not_include_arch(self) -> None:
         plan = run_plan()
@@ -164,10 +212,10 @@ class PlanPublishTest(unittest.TestCase):
             },
         )
 
-    def test_kolla_build_commands_are_executable_arrays(self) -> None:
+    def test_parent_build_command_builds_shared_parents_once(self) -> None:
         plan = run_plan()
-        first_arch = plan["images"][0]["architectures"][0]
-        command = first_arch["commands"]["kolla_build_push"]
+        parent_arch = plan["build"]["parents"]["architectures"][0]
+        command = parent_arch["commands"]["kolla_build_push"]
 
         self.assertEqual(command[0], "kolla-build")
         self.assertIn("--base", command)
@@ -184,8 +232,58 @@ class PlanPublishTest(unittest.TestCase):
         self.assertIn("supergate-jhbyun/kolla-image-build", command)
         self.assertIn("--tag", command)
         self.assertIn("2025.1-rocky-9-amd64", command)
+        self.assertIn("--threads", command)
+        self.assertIn("4", command)
+        self.assertIn("--push-threads", command)
+        self.assertIn("1", command)
+        self.assertIn("--summary-json-file", command)
         self.assertIn("--push", command)
-        self.assertEqual(command[-1], "^keystone$")
+        self.assertNotIn("--skip-existing", command)
+        self.assertEqual(
+            command[-8:],
+            [
+                "^base$",
+                "^openstack-base$",
+                "^keystone-base$",
+                "^glance-base$",
+                "^placement-base$",
+                "^nova-base$",
+                "^neutron-base$",
+                "^heat-base$",
+            ],
+        )
+
+    def test_group_build_command_skips_only_prepulled_images(self) -> None:
+        plan = run_plan()
+        compute = next(group for group in plan["build"]["groups"] if group["name"] == "compute")
+        amd64 = next(arch for arch in compute["architectures"] if arch["arch"] == "amd64")
+        command = amd64["commands"]["kolla_build_push"]
+
+        self.assertEqual(
+            amd64["parent_refs"],
+            [
+                "ghcr.io/supergate-jhbyun/kolla-image-build/base:2025.1-rocky-9-amd64",
+                "ghcr.io/supergate-jhbyun/kolla-image-build/openstack-base:2025.1-rocky-9-amd64",
+                "ghcr.io/supergate-jhbyun/kolla-image-build/nova-base:2025.1-rocky-9-amd64",
+            ],
+        )
+        self.assertIn("--skip-existing", command)
+        self.assertNotIn("--skip-parents", command)
+        self.assertEqual(command[-7:], [f"^{image}$" for image in compute["images"]])
+
+    def test_keystone_only_build_plan_keeps_one_parent_and_one_group(self) -> None:
+        plan = run_plan("--image", "keystone")
+
+        self.assertEqual(
+            plan["build"]["parents"]["images"],
+            ["base", "openstack-base", "keystone-base"],
+        )
+        self.assertEqual(len(plan["build"]["parents"]["architectures"]), 2)
+        self.assertEqual(
+            [group["name"] for group in plan["build"]["groups"]],
+            ["identity"],
+        )
+        self.assertEqual(plan["build"]["groups"][0]["images"], ["keystone"])
 
     def test_manifest_commands_use_per_arch_refs(self) -> None:
         plan = run_plan()

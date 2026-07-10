@@ -21,6 +21,7 @@ ALLOWED_ARCHITECTURES = {"amd64", "arm64"}
 REQUIRED_TEMPLATE_FIELDS = {"release", "distro", "distro_version"}
 ARCH_TEMPLATE_FIELDS = REQUIRED_TEMPLATE_FIELDS | {"arch"}
 IMAGE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+BUILD_GROUP_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 KOLLA_IMAGE_VARIABLE_RE = re.compile(r"^[a-z0-9_]+_image_full$")
 
 
@@ -128,6 +129,8 @@ def validate_profiles(matrix: dict[str, Any], errors: list[str]) -> None:
             continue
 
         profile = load_json(profile_path)
+        if profile.get("schema_version") != 2:
+            errors.append(f"{profile_path.relative_to(ROOT)} schema_version must be 2")
         if profile.get("name") != profile_name:
             errors.append(f"{profile_path.relative_to(ROOT)} name must be {profile_name!r}")
 
@@ -182,6 +185,73 @@ def validate_profiles(matrix: dict[str, Any], errors: list[str]) -> None:
                     )
                     continue
                 kolla_variables.add(variable)
+
+        build_groups = profile.get("build_groups")
+        if not isinstance(build_groups, list) or not build_groups:
+            errors.append(
+                f"{profile_path.relative_to(ROOT)} build_groups must be a non-empty list"
+            )
+            continue
+
+        build_group_names: set[str] = set()
+        grouped_images: set[str] = set()
+        for index, build_group in enumerate(build_groups):
+            if not isinstance(build_group, dict):
+                errors.append(
+                    f"{profile_path.relative_to(ROOT)} build_groups[{index}] must be an object"
+                )
+                continue
+
+            group_name = build_group.get("name")
+            if not isinstance(group_name, str) or not BUILD_GROUP_NAME_RE.fullmatch(
+                group_name
+            ):
+                errors.append(
+                    f"{profile_path.relative_to(ROOT)} build_groups[{index}].name "
+                    "must be a build group name"
+                )
+            elif group_name in build_group_names:
+                errors.append(
+                    f"{profile_path.relative_to(ROOT)} duplicate build group: {group_name}"
+                )
+            else:
+                build_group_names.add(group_name)
+
+            parent = build_group.get("parent")
+            if not isinstance(parent, str) or not IMAGE_NAME_RE.fullmatch(parent):
+                errors.append(
+                    f"{profile_path.relative_to(ROOT)} build_groups[{index}].parent "
+                    "must be a Kolla image name"
+                )
+
+            group_images = build_group.get("images")
+            if not isinstance(group_images, list) or not group_images:
+                errors.append(
+                    f"{profile_path.relative_to(ROOT)} build_groups[{index}].images "
+                    "must be a non-empty list"
+                )
+                continue
+
+            for image in group_images:
+                if image not in image_names:
+                    errors.append(
+                        f"{profile_path.relative_to(ROOT)} build group {group_name!r} "
+                        f"references unknown image: {image!r}"
+                    )
+                    continue
+                if image in grouped_images:
+                    errors.append(
+                        f"{profile_path.relative_to(ROOT)} image appears in multiple "
+                        f"build groups: {image}"
+                    )
+                    continue
+                grouped_images.add(image)
+
+        missing_group_images = sorted(image_names - grouped_images)
+        for image in missing_group_images:
+            errors.append(
+                f"{profile_path.relative_to(ROOT)} image is not assigned to a build group: {image}"
+            )
 
 
 def main() -> int:

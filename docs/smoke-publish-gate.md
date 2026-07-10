@@ -76,12 +76,14 @@ ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9
 After explicit approval and preflight confirmation, the first smoke publish
 executes only the `keystone` entries from the plan:
 
-1. Render the publish plan and image/architecture matrix.
-2. Build and push the amd64 and arm64 `keystone` images in matrix jobs.
-3. Inspect each per-architecture ref in its build job.
-4. Create the architecture-neutral manifest tag in the finalize job.
-5. Inspect the final manifest.
-6. Upload the manifest metadata JSON and digest summary as workflow artifacts.
+1. Render the publish plan plus parent and service-group matrices.
+2. Build and push `base`, `openstack-base`, and `keystone-base` once on each
+   native architecture runner.
+3. Pre-pull those parent tags and build the `keystone` leaf with
+   `--skip-existing` on each architecture runner.
+4. Inspect each per-architecture ref in its build job.
+5. Create and inspect the architecture-neutral manifest in the finalize job.
+6. Validate and upload the manifest metadata and digest summary artifacts.
 
 The manual workflow run must include:
 

@@ -17,11 +17,14 @@ workflow guard with real Kolla image build and GHCR publish steps.
 Kolla supports Docker and Podman. The first publish path uses Docker because the
 manifest plan uses `docker buildx imagetools`.
 
-For `dry_run: false`, the GitHub workflow renders one command plan, fans out
-the selected image and architecture pairs as matrix jobs, installs
-`kolla==20.4.0` plus the Python Docker SDK in each build job, and then runs a
-final manifest job after all per-architecture refs exist. The amd64 job runs on
-`ubuntu-24.04`, and the arm64 job runs natively on `ubuntu-24.04-arm`.
+For `dry_run: false`, the GitHub workflow renders one command plan and executes
+two matrix stages. The parent stage builds shared Kolla parents once per
+architecture. The service stage fans out the selected service groups and
+architectures with at most eight concurrent jobs. Each service job pre-pulls
+its exact parents and uses `--skip-existing`, then Kolla builds up to four
+independent leaf tasks internally. A final job creates manifests and validates
+the publish summary. The amd64 jobs run on `ubuntu-24.04`, and arm64 jobs run
+natively on `ubuntu-24.04-arm`.
 
 ## Command Plan Shape
 
@@ -40,7 +43,7 @@ python3 scripts/plan-publish.py \
   --dry-run
 ```
 
-Example amd64 build command:
+Example amd64 parent command for the keystone smoke target:
 
 ```bash
 kolla-build \
@@ -53,11 +56,37 @@ kolla-build \
   --registry ghcr.io \
   --namespace supergate-jhbyun/kolla-image-build \
   --tag 2025.1-rocky-9-amd64 \
+  --threads 4 \
+  --push-threads 1 \
+  --push \
+  '^base$' \
+  '^openstack-base$' \
+  '^keystone-base$'
+```
+
+The fresh leaf runner pulls those three parent tags, then runs:
+
+```bash
+kolla-build \
+  --engine docker \
+  --base rocky \
+  --base-tag 9 \
+  --base-arch x86_64 \
+  --platform linux/amd64 \
+  --openstack-release 2025.1 \
+  --registry ghcr.io \
+  --namespace supergate-jhbyun/kolla-image-build \
+  --tag 2025.1-rocky-9-amd64 \
+  --threads 4 \
+  --push-threads 1 \
+  --skip-existing \
   --push \
   '^keystone$'
 ```
 
-The arm64 command uses `--base-arch aarch64` and `--platform linux/arm64`.
+The arm64 commands use `--base-arch aarch64` and `--platform linux/arm64` on
+the native arm64 runner. Full core expands to two parent jobs and fourteen
+service-group jobs instead of forty-two image-by-architecture jobs.
 
 Do not create the architecture-neutral deploy tag until all per-architecture
 matrix jobs have pushed their refs to GHCR.

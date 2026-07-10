@@ -53,14 +53,24 @@ variables such as `glance_api_image_full`, `nova_api_image_full`, and
 Publish workflows should produce this sequence:
 
 ```text
-render selected image/architecture matrix
-build per-arch image jobs
-push per-arch debug tags
-inspect pushed images
+render parent and service-group matrices
+build shared parents once per native architecture
+pre-pull parent tags in fresh service-group runners
+build service groups in parallel per native architecture
+push and inspect per-arch leaf tags
 create architecture-neutral manifest tag
 inspect final manifest
-record manifest digest
+record manifest digests and generate the full-profile lock
 ```
+
+The `core` profile owns explicit build groups. Shared `base`, `openstack-base`,
+and service base images are built before leaf jobs. Leaf jobs use
+`--skip-existing` only after pre-pulling those exact parent tags; they do not
+use `--skip-parents`, because a deployable Kolla image such as `nova-compute`
+can itself have children in the complete Kolla dependency graph.
+
+The workflow serializes publishers for the same release, distro, version, and
+profile so concurrent runs cannot race on architecture tags.
 
 Promotion between environments uses the final manifest digest, not a mutable
 environment tag such as `dev`, `staging`, or `prod`.

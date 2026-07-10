@@ -1,7 +1,72 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "name": "core",
   "description": "Digest-lockable Kolla image profile for core OpenStack smoke validation.",
+  "build_groups": [
+    {
+      "name": "identity",
+      "parent": "keystone-base",
+      "images": [
+        "keystone",
+        "keystone-fernet",
+        "keystone-ssh"
+      ]
+    },
+    {
+      "name": "glance",
+      "parent": "glance-base",
+      "images": [
+        "glance-api"
+      ]
+    },
+    {
+      "name": "placement",
+      "parent": "placement-base",
+      "images": [
+        "placement-api"
+      ]
+    },
+    {
+      "name": "compute",
+      "parent": "nova-base",
+      "images": [
+        "nova-api",
+        "nova-scheduler",
+        "nova-conductor",
+        "nova-compute",
+        "nova-libvirt",
+        "nova-ssh",
+        "nova-novncproxy"
+      ]
+    },
+    {
+      "name": "network",
+      "parent": "neutron-base",
+      "images": [
+        "neutron-server",
+        "neutron-dhcp-agent",
+        "neutron-l3-agent",
+        "neutron-metadata-agent",
+        "neutron-openvswitch-agent"
+      ]
+    },
+    {
+      "name": "orchestration",
+      "parent": "heat-base",
+      "images": [
+        "heat-api",
+        "heat-api-cfn",
+        "heat-engine"
+      ]
+    },
+    {
+      "name": "dashboard",
+      "parent": "openstack-base",
+      "images": [
+        "horizon"
+      ]
+    }
+  ],
   "images": [
     {
       "name": "keystone",

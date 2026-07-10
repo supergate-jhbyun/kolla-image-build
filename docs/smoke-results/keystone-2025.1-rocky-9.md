@@ -74,3 +74,37 @@ docker pull --platform linux/arm64 ghcr.io/supergate-jhbyun/kolla-image-build/ke
 ```
 
 Both pulls succeeded using a Docker config without GHCR credentials.
+
+## Native Architecture Runner Verification
+
+Workflow run:
+<https://github.com/supergate-jhbyun/kolla-image-build/actions/runs/29003725462>
+
+Result: success
+
+Runner mapping and duration:
+
+```text
+linux/amd64 ubuntu-24.04     build step 7m44s
+linux/arm64 ubuntu-24.04-arm build step 8m16s
+```
+
+The arm64 job ran without QEMU. The prior QEMU run required approximately 40
+minutes for the same build step.
+
+Published manifest digest:
+
+```text
+sha256:09b219d79b978f8c5aea9bfba919dd26484bc8a60271115edf558c66ac46748a
+```
+
+Architecture digests:
+
+```text
+linux/amd64 sha256:ea289666b79a04612f24f32ddec68af73c64d797df127cd9ef4c536e3a11d687
+linux/arm64 sha256:d7137456067c3e2ffe1aa8e60304346547658d0bf0f2ea7e745739380c5bd2c6
+```
+
+The downloaded publish summary passed `scripts/validate-publish-summary.py`,
+and `docker buildx imagetools inspect` confirmed the architecture-neutral tag
+contains both platform manifests.

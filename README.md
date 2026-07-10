@@ -64,7 +64,8 @@ nova_compute_image_full: "ghcr.io/supergate-jhbyun/kolla-image-build/nova-comput
 ```
 
 The `core` profile is defined as concrete Kolla image names plus their
-Kolla-Ansible `*_image_full` variables, not logical service labels.
+Kolla-Ansible `*_image_full` variables, not logical service labels. It also
+defines service build groups and the Kolla parent image each group consumes.
 
 The owner is configurable. A personal namespace can be used for a proof of
 concept, but organization-owned environments should publish from the final
@@ -130,9 +131,11 @@ The `dry_run: false` smoke path is intentionally guarded. It requires the
 repository variable `ALLOW_GHCR_PUBLISH=true`, the exact approval phrase
 documented in [docs/smoke-publish-gate.md](docs/smoke-publish-gate.md), and the
 first smoke scope `core/keystone 2025.1-rocky-9`. If those gates pass, the
-workflow runs the planned per-architecture Kolla build commands, creates the
-multi-arch manifest, inspects the result, and uploads logs plus manifest
-metadata as artifacts.
+workflow builds shared parents once per native architecture, runs service-group
+leaf builds in a bounded matrix, creates the multi-arch manifests, and uploads
+logs plus digest metadata as artifacts. Full-core planning produces two parent
+jobs and fourteen service-group jobs rather than forty-two independent leaf
+jobs.
 
 For a full profile publish, convert the publish summary into a lock:
 
@@ -166,13 +169,7 @@ is given and runner/GHCR preflight is confirmed, use dry-run only.
 
 ## Next Steps
 
-Before the first real smoke publish:
-
-1. confirm GHCR visibility policy and package ownership;
-2. confirm the selected runner has Docker, Buildx, BuildKit, Python 3, Kolla,
-   enough disk, and cross-platform build support;
-3. set `ALLOW_GHCR_PUBLISH=true`;
-4. provide the exact approval phrase from
-   [docs/smoke-publish-gate.md](docs/smoke-publish-gate.md);
-5. run the manual workflow for `keystone` only;
-6. review the digest artifacts before expanding beyond the smoke image.
+The keystone amd64/arm64 smoke publish has passed on native GitHub-hosted
+runners. Before enabling `dry_run: false` for `image=all`, run the full-core
+dry-run, review its parent/group matrices, approve the broader GHCR write
+scope, and verify the generated full-profile digest lock in a staging deploy.
