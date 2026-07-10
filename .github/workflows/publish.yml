@@ -34,7 +34,7 @@ on:
         options:
           - core
       image:
-        description: Smoke publish image, or all for a full-profile dry run
+        description: Image to publish, or all for the full core profile
         required: true
         type: choice
         default: keystone
@@ -131,31 +131,19 @@ jobs:
               output.write(f"build_matrix={json.dumps(build_matrix, sort_keys=True)}\n")
           PY
 
-      - name: Validate smoke publish approval
+      - name: Validate publish approval
         if: ${{ !inputs.dry_run }}
         env:
           ALLOW_GHCR_PUBLISH: ${{ vars.ALLOW_GHCR_PUBLISH }}
+          ALLOW_GHCR_FULL_CORE_PUBLISH: ${{ vars.ALLOW_GHCR_FULL_CORE_PUBLISH }}
           APPROVAL: ${{ inputs.approval }}
-          EXPECTED_APPROVAL: I approve GHCR smoke publish for keystone 2025.1-rocky-9 from supergate-jhbyun/kolla-image-build.
         run: |
-          if [ "$ALLOW_GHCR_PUBLISH" != "true" ]; then
-            echo "dry_run=false requires repository variable ALLOW_GHCR_PUBLISH=true."
-            exit 1
-          fi
-
-          if [ "$APPROVAL" != "$EXPECTED_APPROVAL" ]; then
-            echo "dry_run=false requires the exact smoke publish approval phrase."
-            exit 1
-          fi
-
-          if [ "${{ inputs.profile }}" != "core" ] ||
-             [ "${{ inputs.image }}" != "keystone" ] ||
-             [ "${{ inputs.release }}" != "2025.1" ] ||
-             [ "${{ inputs.distro }}" != "rocky" ] ||
-             [ "${{ inputs.distro_version }}" != "9" ]; then
-            echo "The first smoke publish is restricted to core/keystone 2025.1-rocky-9."
-            exit 1
-          fi
+          python3 scripts/validate-publish-approval.py \
+            --profile '${{ inputs.profile }}' \
+            --image '${{ inputs.image }}' \
+            --release '${{ inputs.release }}' \
+            --distro '${{ inputs.distro }}' \
+            --distro-version '${{ inputs.distro_version }}'
 
       - name: Upload dry-run publish artifacts
         if: ${{ inputs.dry_run }}

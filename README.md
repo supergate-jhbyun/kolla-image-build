@@ -127,15 +127,17 @@ gh workflow run publish.yml \
   -f dry_run=true
 ```
 
-The `dry_run: false` smoke path is intentionally guarded. It requires the
-repository variable `ALLOW_GHCR_PUBLISH=true`, the exact approval phrase
-documented in [docs/smoke-publish-gate.md](docs/smoke-publish-gate.md), and the
-first smoke scope `core/keystone 2025.1-rocky-9`. If those gates pass, the
-workflow builds shared parents once per native architecture, runs service-group
-leaf builds in a bounded matrix, creates the multi-arch manifests, and uploads
-logs plus digest metadata as artifacts. Full-core planning produces two parent
-jobs and fourteen service-group jobs rather than forty-two independent leaf
-jobs.
+The `dry_run: false` path is intentionally scope-gated. The keystone smoke
+scope requires `ALLOW_GHCR_PUBLISH=true` and the approval documented in
+[docs/smoke-publish-gate.md](docs/smoke-publish-gate.md). The Rocky 9 full-core
+scope has a separate one-time `ALLOW_GHCR_FULL_CORE_PUBLISH=true` gate and
+approval documented in
+[docs/full-core-publish-gate.md](docs/full-core-publish-gate.md). If the
+selected gate passes, the workflow builds shared parents once per native
+architecture, runs service-group leaf builds in a bounded matrix, creates the
+multi-arch manifests, and uploads logs plus digest metadata as artifacts.
+Full-core publishing produces two parent jobs and fourteen service-group jobs
+rather than forty-two independent leaf jobs.
 
 For a full profile publish, convert the publish summary into a lock:
 
@@ -167,9 +169,14 @@ See [docs/smoke-publish-gate.md](docs/smoke-publish-gate.md) for the explicit
 human approval gate and first-image smoke publish runbook. Until that approval
 is given and runner/GHCR preflight is confirmed, use dry-run only.
 
+See [docs/full-core-publish-gate.md](docs/full-core-publish-gate.md) for the
+approved Rocky 9 full-core scope, capacity model, one-time variable, artifact
+checks, staging lock procedure, and rollback boundary.
+
 ## Next Steps
 
 The keystone amd64/arm64 smoke publish has passed on native GitHub-hosted
-runners. Before enabling `dry_run: false` for `image=all`, run the full-core
-dry-run, review its parent/group matrices, approve the broader GHCR write
-scope, and verify the generated full-profile digest lock in a staging deploy.
+runners. The next release step is the separately approved Rocky 9 full-core
+publish followed by full artifact validation and creation of a staging lock.
+Production promotion remains blocked until that exact lock passes a staging
+deployment.

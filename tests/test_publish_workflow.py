@@ -24,22 +24,24 @@ class PublishWorkflowTest(unittest.TestCase):
         self.assertNotIn("actions/download-artifact@v4", publish)
         self.assertNotIn("docker/setup-buildx-action@v3", publish)
 
-    def test_image_all_is_available_for_full_profile_dry_runs(self) -> None:
+    def test_image_all_is_available_for_full_profile_runs(self) -> None:
         workflow = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
-        self.assertIn("description: Smoke publish image, or all for a full-profile dry run", workflow)
+        self.assertIn("description: Image to publish, or all for the full core profile", workflow)
         self.assertIn("          - all", workflow)
         self.assertIn("if [ '${{ inputs.image }}' != 'all' ]; then", workflow)
         self.assertIn("plan_args+=(--image '${{ inputs.image }}')", workflow)
 
-    def test_real_publish_guard_still_restricts_to_keystone(self) -> None:
+    def test_real_publish_uses_scope_specific_approval_gate(self) -> None:
         workflow = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
-        self.assertIn('[ "${{ inputs.image }}" != "keystone" ]', workflow)
+        self.assertIn("name: Validate publish approval", workflow)
+        self.assertIn("ALLOW_GHCR_PUBLISH: ${{ vars.ALLOW_GHCR_PUBLISH }}", workflow)
         self.assertIn(
-            "The first smoke publish is restricted to core/keystone 2025.1-rocky-9.",
+            "ALLOW_GHCR_FULL_CORE_PUBLISH: ${{ vars.ALLOW_GHCR_FULL_CORE_PUBLISH }}",
             workflow,
         )
+        self.assertIn("python3 scripts/validate-publish-approval.py", workflow)
 
     def test_real_publish_validates_partial_and_full_summary_artifacts(self) -> None:
         workflow = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
