@@ -6,9 +6,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLISH_WORKFLOW = ROOT / ".github" / "workflows" / "publish.yml"
+VALIDATE_WORKFLOW = ROOT / ".github" / "workflows" / "validate.yml"
 
 
 class PublishWorkflowTest(unittest.TestCase):
+    def test_workflows_use_node24_action_majors(self) -> None:
+        publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+        validate = VALIDATE_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("actions/checkout@v7", publish)
+        self.assertIn("actions/checkout@v7", validate)
+        self.assertIn("actions/upload-artifact@v7", publish)
+        self.assertIn("actions/download-artifact@v8", publish)
+        self.assertIn("docker/setup-buildx-action@v4", publish)
+        self.assertNotIn("actions/checkout@v4", publish + validate)
+        self.assertNotIn("actions/upload-artifact@v4", publish)
+        self.assertNotIn("actions/download-artifact@v4", publish)
+        self.assertNotIn("docker/setup-buildx-action@v3", publish)
+
     def test_image_all_is_available_for_full_profile_dry_runs(self) -> None:
         workflow = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 

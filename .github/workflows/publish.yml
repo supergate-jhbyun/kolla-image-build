@@ -74,7 +74,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Validate repository configuration
         run: python3 scripts/validate-config.py
@@ -159,7 +159,7 @@ jobs:
 
       - name: Upload dry-run publish artifacts
         if: ${{ inputs.dry_run }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kolla-publish-${{ inputs.image }}-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
           path: artifacts/
@@ -167,7 +167,7 @@ jobs:
 
       - name: Upload publish plan artifact
         if: ${{ !inputs.dry_run }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kolla-publish-plan-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
           path: artifacts/plan/
@@ -189,13 +189,13 @@ jobs:
 
     steps:
       - name: Download publish plan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: kolla-publish-plan-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
           path: artifacts/plan
 
       - name: Set up Docker Buildx builder
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Install Kolla tooling
         run: |
@@ -299,7 +299,7 @@ jobs:
 
       - name: Upload parent build artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kolla-parents-${{ matrix.arch }}-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
           path: artifacts/
@@ -323,13 +323,13 @@ jobs:
 
     steps:
       - name: Download publish plan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: kolla-publish-plan-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
           path: artifacts/plan
 
       - name: Set up Docker Buildx builder
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Install Kolla tooling
         run: |
@@ -441,7 +441,7 @@ jobs:
 
       - name: Upload service build artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kolla-leaf-${{ matrix.group }}-${{ matrix.arch }}-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
           path: artifacts/
@@ -462,23 +462,23 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download publish plan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: kolla-publish-plan-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
           path: artifacts/plan
 
       - name: Download architecture build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: kolla-leaf-*-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
           path: artifacts
           merge-multiple: true
 
       - name: Set up Docker Buildx builder
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
         env:
@@ -632,7 +632,7 @@ jobs:
 
       - name: Upload publish artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kolla-publish-${{ inputs.image }}-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
           path: artifacts/
