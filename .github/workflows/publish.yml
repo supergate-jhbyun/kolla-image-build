@@ -33,8 +33,9 @@ on:
         default: core
         options:
           - core
+          - deployment
       image:
-        description: Image to publish, or all for the full core profile
+        description: Image to publish, or all for a full profile
         required: true
         type: choice
         default: keystone
@@ -136,6 +137,7 @@ jobs:
         env:
           ALLOW_GHCR_PUBLISH: ${{ vars.ALLOW_GHCR_PUBLISH }}
           ALLOW_GHCR_FULL_CORE_PUBLISH: ${{ vars.ALLOW_GHCR_FULL_CORE_PUBLISH }}
+          ALLOW_GHCR_DEPLOYMENT_PUBLISH: ${{ vars.ALLOW_GHCR_DEPLOYMENT_PUBLISH }}
           APPROVAL: ${{ inputs.approval }}
         run: |
           python3 scripts/validate-publish-approval.py \
@@ -413,6 +415,7 @@ jobs:
                           "image": image_name,
                           "group": group_name,
                           "arch": arch_name,
+                          "platform": arch["platform"],
                           "arch_ref": arch_ref,
                           "arch_tag": image_arch["arch_tag"],
                           "build_log": str(build_log),

@@ -48,6 +48,17 @@ def publish_summary(
                 ),
                 "deploy_tag": tag,
                 "manifest_digest": digest(index + 1),
+                "architectures": [
+                    {
+                        "arch": arch,
+                        "platform": f"linux/{arch}",
+                        "arch_ref": (
+                            "ghcr.io/supergate-jhbyun/kolla-image-build/"
+                            f"{image['name']}:{tag}-{arch}"
+                        ),
+                    }
+                    for arch in ("amd64", "arm64")
+                ],
             }
             for index, image in enumerate(selected_images)
         ],
@@ -126,6 +137,18 @@ class PublishSummaryValidationTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 1)
             self.assertIn("publish summary is missing image:", result.stderr)
+
+    def test_missing_architecture_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            summary = publish_summary()
+            summary["images"][0]["architectures"].pop()
+            summary_path = Path(temp_dir) / "publish-summary.json"
+            summary_path.write_text(json.dumps(summary), encoding="utf-8")
+
+            result = run_validator(summary_path)
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("architectures must be exactly", result.stderr)
 
     def test_partial_keystone_summary_passes_with_explicit_flag(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

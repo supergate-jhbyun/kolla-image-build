@@ -27,7 +27,8 @@ class PublishWorkflowTest(unittest.TestCase):
     def test_image_all_is_available_for_full_profile_runs(self) -> None:
         workflow = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
 
-        self.assertIn("description: Image to publish, or all for the full core profile", workflow)
+        self.assertIn("description: Image to publish, or all for a full profile", workflow)
+        self.assertIn("          - deployment", workflow)
         self.assertIn("          - all", workflow)
         self.assertIn("if [ '${{ inputs.image }}' != 'all' ]; then", workflow)
         self.assertIn("plan_args+=(--image '${{ inputs.image }}')", workflow)
@@ -39,6 +40,11 @@ class PublishWorkflowTest(unittest.TestCase):
         self.assertIn("ALLOW_GHCR_PUBLISH: ${{ vars.ALLOW_GHCR_PUBLISH }}", workflow)
         self.assertIn(
             "ALLOW_GHCR_FULL_CORE_PUBLISH: ${{ vars.ALLOW_GHCR_FULL_CORE_PUBLISH }}",
+            workflow,
+        )
+        self.assertIn(
+            "ALLOW_GHCR_DEPLOYMENT_PUBLISH: "
+            "${{ vars.ALLOW_GHCR_DEPLOYMENT_PUBLISH }}",
             workflow,
         )
         self.assertIn("python3 scripts/validate-publish-approval.py", workflow)

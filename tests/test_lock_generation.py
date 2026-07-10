@@ -158,14 +158,15 @@ class LockGenerationTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("must be digest pinned", result.stderr)
 
-    def test_validate_dev_lock_allows_tag_only_refs(self) -> None:
+    def test_validate_dev_lock_rejects_tag_only_refs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             lock_path = Path(temp_dir) / "lock.yml"
             lock_path.write_text(tag_only_lock(), encoding="utf-8")
 
             result = validate_lock(lock_path, "dev")
 
-            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("must be digest pinned", result.stderr)
 
     def test_validate_lock_rejects_mixed_distro_tag(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

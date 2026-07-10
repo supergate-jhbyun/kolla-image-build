@@ -109,8 +109,7 @@ def validate_ref(
     else:
         if value != expected_prefix:
             errors.append(f"{variable} must use {expected_prefix}, got {value}")
-        if environment in {"stg", "prod"}:
-            errors.append(f"{environment} lock {variable} must be digest pinned")
+        errors.append(f"{environment} lock {variable} must be digest pinned")
 
     return errors
 

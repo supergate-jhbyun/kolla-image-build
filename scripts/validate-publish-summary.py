@@ -55,11 +55,17 @@ def load_profile(name: str) -> dict[str, Any]:
     return profile
 
 
-def render_tag(template: str, release: str, distro: dict[str, str]) -> str:
+def render_tag(
+    template: str,
+    release: str,
+    distro: dict[str, str],
+    arch: str | None = None,
+) -> str:
     return template.format(
         release=release,
         distro=distro["name"],
         distro_version=distro["version"],
+        arch=arch or "",
     )
 
 
@@ -140,6 +146,8 @@ def validate_image(
     expected_profile_image: dict[str, Any],
     image_summary: dict[str, Any],
     matrix: dict[str, Any],
+    release: str,
+    distro: dict[str, str],
     deploy_tag: str,
 ) -> list[str]:
     errors: list[str] = []
@@ -163,6 +171,52 @@ def validate_image(
     digest = image_summary.get("manifest_digest")
     if not isinstance(digest, str) or not DIGEST_RE.fullmatch(digest):
         errors.append(f"{image} manifest_digest must be sha256:<64 hex chars>")
+
+    architectures = image_summary.get("architectures")
+    expected_arches = matrix["architectures"]
+    if not isinstance(architectures, list):
+        errors.append(f"{image} architectures must be exactly {expected_arches!r}")
+        return errors
+
+    architectures_by_name: dict[str, dict[str, Any]] = {}
+    for index, architecture in enumerate(architectures):
+        if not isinstance(architecture, dict):
+            errors.append(f"{image} architectures[{index}] must be an object")
+            continue
+        arch = architecture.get("arch")
+        if not isinstance(arch, str) or not arch:
+            errors.append(f"{image} architectures[{index}].arch must be a string")
+            continue
+        if arch in architectures_by_name:
+            errors.append(f"{image} contains duplicate architecture: {arch}")
+            continue
+        architectures_by_name[arch] = architecture
+
+    if set(architectures_by_name) != set(expected_arches):
+        errors.append(f"{image} architectures must be exactly {expected_arches!r}")
+
+    for arch in expected_arches:
+        architecture = architectures_by_name.get(arch)
+        if architecture is None:
+            continue
+        arch_tag = render_tag(
+            matrix["tag_policy"]["arch_tag_template"],
+            release,
+            distro,
+            arch,
+        )
+        expected_arch_ref = image_ref(
+            matrix["registry"],
+            matrix["owner"],
+            matrix["repository"],
+            image,
+            arch_tag,
+        )
+        if architecture.get("arch_ref") != expected_arch_ref:
+            errors.append(f"{image} {arch} arch_ref must be {expected_arch_ref!r}")
+        expected_platform = f"linux/{arch}"
+        if architecture.get("platform") != expected_platform:
+            errors.append(f"{image} {arch} platform must be {expected_platform!r}")
 
     return errors
 
@@ -198,6 +252,8 @@ def validate_publish_summary(
                 expected_profile_image,
                 image_summary,
                 matrix,
+                release,
+                distro,
                 deploy_tag,
             )
         )

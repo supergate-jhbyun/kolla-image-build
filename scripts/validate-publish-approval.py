@@ -20,6 +20,7 @@ class PublishScope:
 
 SMOKE_SCOPE = PublishScope("core", "keystone", "2025.1", "rocky", "9")
 FULL_CORE_SCOPE = PublishScope("core", "all", "2025.1", "rocky", "9")
+DEPLOYMENT_SCOPE = PublishScope("deployment", "all", "2025.1", "rocky", "9")
 
 SMOKE_APPROVAL = (
     "I approve GHCR smoke publish for keystone 2025.1-rocky-9 from "
@@ -28,6 +29,10 @@ SMOKE_APPROVAL = (
 FULL_CORE_APPROVAL = (
     "I approve GHCR full-core publish for core 2025.1-rocky-9 "
     "(21 images, amd64/arm64) from supergate-jhbyun/kolla-image-build."
+)
+DEPLOYMENT_APPROVAL = (
+    "I approve GHCR deployment publish for deployment 2025.1-rocky-9 "
+    "(52 images, amd64/arm64) from supergate-jhbyun/kolla-image-build."
 )
 
 
@@ -75,6 +80,18 @@ def main() -> int:
                 "Full-core publish requires the exact full-core publish approval phrase."
             )
         print("Full-core publish approval validated.")
+        return 0
+
+    if scope == DEPLOYMENT_SCOPE:
+        if os.environ.get("ALLOW_GHCR_DEPLOYMENT_PUBLISH") != "true":
+            return reject(
+                "Deployment publish requires ALLOW_GHCR_DEPLOYMENT_PUBLISH=true."
+            )
+        if approval != DEPLOYMENT_APPROVAL:
+            return reject(
+                "Deployment publish requires the exact deployment publish approval phrase."
+            )
+        print("Deployment publish approval validated.")
         return 0
 
     return reject(
