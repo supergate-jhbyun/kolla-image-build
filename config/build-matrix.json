@@ -5,7 +5,8 @@
   "registry": "ghcr.io",
   "release": "2025.1",
   "profiles": [
-    "core"
+    "core",
+    "deployment"
   ],
   "distros": [
     {

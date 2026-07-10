@@ -115,10 +115,16 @@ def selected_build_groups(
     for group in profile["build_groups"]:
         group_images = [image for image in group["images"] if image in selected_names]
         if group_images:
+            parents = group.get("parents")
+            if parents is None:
+                parents = list(
+                    dict.fromkeys(["base", "openstack-base", group["parent"]])
+                )
             groups.append(
                 {
                     "name": group["name"],
                     "parent": group["parent"],
+                    "parents": parents,
                     "images": group_images,
                 }
             )
@@ -248,7 +254,15 @@ def build_plan(
 
     parent_images = list(
         dict.fromkeys(
-            ["base", "openstack-base", *[group["parent"] for group in build_groups]]
+            [
+                "base",
+                "openstack-base",
+                *[
+                    parent
+                    for group in build_groups
+                    for parent in group["parents"]
+                ],
+            ]
         )
     )
     parent_architectures = []
@@ -293,9 +307,7 @@ def build_plan(
                     "platform": ARCH_TO_PLATFORM[arch],
                     "parent_refs": [
                         image_ref(registry, owner, repository, parent, arch_tag)
-                        for parent in dict.fromkeys(
-                            ["base", "openstack-base", group["parent"]]
-                        )
+                        for parent in group["parents"]
                     ],
                     "image_refs": [
                         next(

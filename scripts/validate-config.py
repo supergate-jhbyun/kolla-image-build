@@ -224,6 +224,36 @@ def validate_profiles(matrix: dict[str, Any], errors: list[str]) -> None:
                     "must be a Kolla image name"
                 )
 
+            parents = build_group.get("parents")
+            if parents is not None:
+                if not isinstance(parents, list) or not parents:
+                    errors.append(
+                        f"{profile_path.relative_to(ROOT)} build_groups[{index}].parents "
+                        "must be a non-empty list"
+                    )
+                else:
+                    seen_parents: set[str] = set()
+                    for chain_parent in parents:
+                        if not isinstance(chain_parent, str) or not IMAGE_NAME_RE.fullmatch(
+                            chain_parent
+                        ):
+                            errors.append(
+                                f"{profile_path.relative_to(ROOT)} build_groups[{index}] "
+                                f"has invalid parent chain image: {chain_parent!r}"
+                            )
+                        elif chain_parent in seen_parents:
+                            errors.append(
+                                f"{profile_path.relative_to(ROOT)} build_groups[{index}] "
+                                f"duplicates parent chain image: {chain_parent}"
+                            )
+                        else:
+                            seen_parents.add(chain_parent)
+                    if isinstance(parent, str) and parents[-1] != parent:
+                        errors.append(
+                            f"{profile_path.relative_to(ROOT)} build_groups[{index}].parents "
+                            "must end with build_groups[].parent"
+                        )
+
             group_images = build_group.get("images")
             if not isinstance(group_images, list) or not group_images:
                 errors.append(
