@@ -54,7 +54,7 @@ on:
         default: ""
 
 concurrency:
-  group: kolla-publish-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}-${{ inputs.profile }}
+  group: kolla-publish-${{ inputs.release }}-${{ inputs.distro }}-${{ inputs.distro_version }}
   cancel-in-progress: false
 
 permissions:

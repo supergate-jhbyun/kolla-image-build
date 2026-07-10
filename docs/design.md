@@ -65,8 +65,8 @@ before leaf jobs. Leaf jobs use
 use `--skip-parents`, because a deployable Kolla image such as `nova-compute`
 can itself have children in the complete Kolla dependency graph.
 
-The workflow serializes publishers for the same release, distro, version, and
-profile so concurrent runs cannot race on architecture tags.
+The workflow serializes every profile publisher for the same release, distro,
+and version because core and deployment profiles share architecture tags.
 
 Promotion between environments uses the final manifest digest, not a mutable
 environment tag such as `dev`, `staging`, or `prod`.

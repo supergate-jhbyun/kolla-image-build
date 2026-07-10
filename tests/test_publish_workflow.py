@@ -96,6 +96,10 @@ class PublishWorkflowTest(unittest.TestCase):
         self.assertIn("concurrency:", workflow)
         self.assertIn(
             "group: kolla-publish-${{ inputs.release }}-${{ inputs.distro }}-"
+            "${{ inputs.distro_version }}",
+            workflow,
+        )
+        self.assertNotIn(
             "${{ inputs.distro_version }}-${{ inputs.profile }}",
             workflow,
         )
