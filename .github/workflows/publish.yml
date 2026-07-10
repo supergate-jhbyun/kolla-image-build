@@ -243,7 +243,10 @@ jobs:
           logs_dir = pathlib.Path("artifacts/logs")
           parent_dir = pathlib.Path("artifacts/parents")
           pathlib.Path("artifacts/kolla-summary").mkdir(parents=True, exist_ok=True)
-          pathlib.Path("artifacts/kolla-logs").mkdir(parents=True, exist_ok=True)
+          (pathlib.Path("artifacts/kolla-logs") / f"parents-{arch_name}").mkdir(
+              parents=True,
+              exist_ok=True,
+          )
           logs_dir.mkdir(parents=True, exist_ok=True)
           parent_dir.mkdir(parents=True, exist_ok=True)
 
@@ -373,7 +376,10 @@ jobs:
           logs_dir = pathlib.Path("artifacts/logs")
           arch_dir = pathlib.Path("artifacts/arch")
           pathlib.Path("artifacts/kolla-summary").mkdir(parents=True, exist_ok=True)
-          pathlib.Path("artifacts/kolla-logs").mkdir(parents=True, exist_ok=True)
+          (pathlib.Path("artifacts/kolla-logs") / f"{group_name}-{arch_name}").mkdir(
+              parents=True,
+              exist_ok=True,
+          )
           logs_dir.mkdir(parents=True, exist_ok=True)
           arch_dir.mkdir(parents=True, exist_ok=True)
 

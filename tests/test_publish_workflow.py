@@ -52,6 +52,8 @@ class PublishWorkflowTest(unittest.TestCase):
         self.assertIn("max-parallel: 8", workflow)
         self.assertIn('for parent_ref in arch["parent_refs"]:', workflow)
         self.assertIn('["docker", "pull", "--platform", arch["platform"], parent_ref]', workflow)
+        self.assertIn('f"parents-{arch_name}"', workflow)
+        self.assertIn('f"{group_name}-{arch_name}"', workflow)
         self.assertNotIn("docker/setup-qemu-action", workflow)
 
     def test_real_publish_finalizes_manifest_after_architecture_builds(self) -> None:
