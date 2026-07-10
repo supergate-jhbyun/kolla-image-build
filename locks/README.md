@@ -12,7 +12,14 @@ locks/stg/core-2025.1-rocky-9.yml
 locks/stg/core-2025.1-ubuntu-24.04.yml
 locks/prod/core-2025.1-rocky-9.yml
 locks/prod/core-2025.1-ubuntu-24.04.yml
+locks/dev/deployment-2025.1-rocky-9.yml
+locks/stg/deployment-2025.1-rocky-9.yml
+locks/prod/deployment-2025.1-rocky-9.yml
 ```
+
+Only the deployment dev lock is created after the first full deployment
+publish. Do not create its staging lock before dev validation, or its
+production lock before staging validation.
 
 Do not commit placeholder lock YAML with fake digests. Generate locks from a
 real publish summary:
@@ -27,8 +34,7 @@ python3 scripts/generate-lock.py \
   --output locks/stg/core-2025.1-rocky-9.yml
 ```
 
-Dev may use tag-only refs for rapid iteration. Stg and prod must validate with
-digest-pinned refs:
+Dev, stg, and prod must all validate with digest-pinned refs:
 
 ```bash
 python3 scripts/validate-lock.py \

@@ -15,9 +15,10 @@ The current scope is intentionally narrow:
 
 ## Image Strategy
 
-Kolla-Ansible dev environments may consume an architecture-neutral deployment
-tag. The registry decides which platform image to pull through a
-multi-architecture manifest.
+Kolla-Ansible environments consume an architecture-neutral deployment tag
+pinned to its manifest digest. The registry chooses the platform image through
+the multi-architecture manifest while the digest keeps every environment on
+the same immutable image set.
 
 Canonical deployment tag:
 
@@ -45,8 +46,7 @@ staging/production deployment interface:
 
 ## Kolla-Ansible Consumption
 
-For fast dev iteration, configure Kolla-Ansible with the GHCR namespace and the
-architecture-neutral tag:
+Configure Kolla-Ansible with the GHCR namespace and architecture-neutral tag:
 
 ```yaml
 docker_registry: "ghcr.io"
@@ -54,8 +54,8 @@ docker_namespace: "supergate-jhbyun/kolla-image-build"
 openstack_tag: "2025.1-rocky-9"
 ```
 
-For staging and production, do not rely on `openstack_tag` alone. Generate and
-include a digest-pinned `*_image_full` lock file:
+Do not rely on `openstack_tag` alone in dev, staging, or production. Generate
+and include a digest-pinned `*_image_full` lock file:
 
 ```yaml
 keystone_image_full: "ghcr.io/supergate-jhbyun/kolla-image-build/keystone:2025.1-rocky-9@sha256:<manifest-digest>"
@@ -63,9 +63,10 @@ glance_api_image_full: "ghcr.io/supergate-jhbyun/kolla-image-build/glance-api:20
 nova_compute_image_full: "ghcr.io/supergate-jhbyun/kolla-image-build/nova-compute:2025.1-rocky-9@sha256:<manifest-digest>"
 ```
 
-The `core` profile is defined as concrete Kolla image names plus their
-Kolla-Ansible `*_image_full` variables, not logical service labels. It also
-defines service build groups and the Kolla parent image each group consumes.
+The `core` profile remains the compact smoke-CI surface. The `deployment`
+profile defines the web01 topology's complete 52-image fresh-deploy closure,
+54 Kolla-Ansible variables, 13 shared parents, and 17 service build groups.
+Parents are build dependencies only; environment locks contain leaf variables.
 
 The owner is configurable. A personal namespace can be used for a proof of
 concept, but organization-owned environments should publish from the final
@@ -76,6 +77,7 @@ organization namespace before any shared dev, staging, or production use.
 ```text
 config/build-matrix.json      Supported release, distro, and arch matrix
 config/profiles/core.json     Kolla image to Kolla-Ansible variable mapping
+config/profiles/deployment.json  Full web01 deployment image closure
 scripts/validate-config.py    Repository configuration validator
 scripts/plan-publish.py       Dry-run kolla-build and manifest command planner
 scripts/generate-lock.py      Digest summary to Kolla-Ansible lock renderer
@@ -84,6 +86,7 @@ locks/                        Environment lock policy and future lock files
 docs/design.md                Design notes and promotion policy
 docs/build-readiness.md       Real build command and runner readiness notes
 docs/smoke-publish-gate.md    Approval gate and runbook for first publish
+docs/deployment-publish-gate.md  Full deployment publish approval runbook
 ```
 
 ## Validation
@@ -93,8 +96,10 @@ Run local validation with:
 ```bash
 python3 -m json.tool config/build-matrix.json
 python3 -m json.tool config/profiles/core.json
+python3 -m json.tool config/profiles/deployment.json
 python3 scripts/validate-config.py
 python3 scripts/plan-publish.py --profile core --release 2025.1 --distro rocky --distro-version 9 --dry-run
+python3 scripts/plan-publish.py --profile deployment --release 2025.1 --distro rocky --distro-version 9 --dry-run
 python3 scripts/plan-publish.py --profile core --image keystone --release 2025.1 --distro rocky --distro-version 9 --dry-run
 python3 -m unittest discover -s tests -v
 ```
@@ -132,7 +137,10 @@ scope requires `ALLOW_GHCR_PUBLISH=true` and the approval documented in
 [docs/smoke-publish-gate.md](docs/smoke-publish-gate.md). The Rocky 9 full-core
 scope has a separate one-time `ALLOW_GHCR_FULL_CORE_PUBLISH=true` gate and
 approval documented in
-[docs/full-core-publish-gate.md](docs/full-core-publish-gate.md). If the
+[docs/full-core-publish-gate.md](docs/full-core-publish-gate.md). The deployment
+scope has its own one-time
+`ALLOW_GHCR_DEPLOYMENT_PUBLISH=true` gate and approval documented in
+[docs/deployment-publish-gate.md](docs/deployment-publish-gate.md). If the
 selected gate passes, the workflow builds shared parents once per native
 architecture, runs service-group leaf builds in a bounded matrix, creates the
 multi-arch manifests, and uploads logs plus digest metadata as artifacts.
@@ -144,15 +152,15 @@ For a full profile publish, convert the publish summary into a lock:
 ```bash
 python3 scripts/generate-lock.py \
   --publish-summary artifacts/publish-summary-2025.1-rocky-9.json \
-  --profile core \
+  --profile deployment \
   --release 2025.1 \
   --distro rocky \
   --distro-version 9 \
   --output artifacts/kolla-ansible-image-lock-2025.1-rocky-9.yml
 
 python3 scripts/validate-lock.py \
-  --environment stg \
-  --profile core \
+  --environment dev \
+  --profile deployment \
   --release 2025.1 \
   --distro rocky \
   --distro-version 9 \
@@ -173,10 +181,13 @@ See [docs/full-core-publish-gate.md](docs/full-core-publish-gate.md) for the
 approved Rocky 9 full-core scope, capacity model, one-time variable, artifact
 checks, staging lock procedure, and rollback boundary.
 
+See [docs/deployment-publish-gate.md](docs/deployment-publish-gate.md) for the
+52-image Rocky 9 deployment scope. That gate produces a dev lock only; staging
+and production promotion remain separate environment validations.
+
 ## Next Steps
 
-The keystone amd64/arm64 smoke publish has passed on native GitHub-hosted
-runners. The next release step is the separately approved Rocky 9 full-core
-publish followed by full artifact validation and creation of a staging lock.
-Production promotion remains blocked until that exact lock passes a staging
-deployment.
+The keystone smoke and 21-image full-core publishes have passed on native
+GitHub-hosted runners. The next release step is the separately gated 52-image
+Rocky 9 deployment publish, creation of a digest-pinned dev lock, and web01 dev
+validation. Staging and production promotion remain blocked until dev passes.

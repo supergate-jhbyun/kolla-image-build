@@ -32,13 +32,8 @@ Architecture-specific tags are only for debugging and reproducibility:
 <release>-<distro>-<distro_version>-arm64
 ```
 
-Dev environments may point to the architecture-neutral tag through
-`openstack_tag`. This keeps fast iteration aligned with the normal Kolla
-registry and namespace model while letting the registry choose the correct
-platform image.
-
-Staging and production must use generated Kolla-Ansible `*_image_full`
-overrides with the manifest digest attached:
+All environments use generated Kolla-Ansible `*_image_full` overrides with the
+architecture-neutral manifest digest attached:
 
 ```text
 ghcr.io/supergate-jhbyun/kolla-image-build/<image>:2025.1-rocky-9@sha256:<manifest-digest>
@@ -63,8 +58,9 @@ inspect final manifest
 record manifest digests and generate the full-profile lock
 ```
 
-The `core` profile owns explicit build groups. Shared `base`, `openstack-base`,
-and service base images are built before leaf jobs. Leaf jobs use
+The `core` smoke profile and `deployment` runtime profile own explicit build
+groups. Shared `base`, `openstack-base`, and service base images are built
+before leaf jobs. Leaf jobs use
 `--skip-existing` only after pre-pulling those exact parent tags; they do not
 use `--skip-parents`, because a deployable Kolla image such as `nova-compute`
 can itself have children in the complete Kolla dependency graph.
@@ -86,15 +82,17 @@ locks/stg/core-2025.1-rocky-9.yml
 locks/stg/core-2025.1-ubuntu-24.04.yml
 locks/prod/core-2025.1-rocky-9.yml
 locks/prod/core-2025.1-ubuntu-24.04.yml
+locks/dev/deployment-2025.1-rocky-9.yml
+locks/stg/deployment-2025.1-rocky-9.yml
+locks/prod/deployment-2025.1-rocky-9.yml
 ```
 
-Dev may use tag-only refs for speed, but generated dev locks should still be
-digest-pinned when reproducibility is being tested. Staging and production lock
-validation fails if any ref is tag-only or if a Rocky and Ubuntu tag are mixed
-in the same lock.
+Dev, staging, and production validation fails if any ref is tag-only or if a
+Rocky and Ubuntu tag are mixed in the same lock. Deployment parents never
+appear in an environment lock; only enabled Kolla leaf variables are pinned.
 
 Production promotion is a copy of the staging-verified digest set for the full
-`core + release + distro-version` tuple. Rollback is a restore of a previous
+`profile + release + distro-version` tuple. Rollback is a restore of a previous
 production lock file, not a rebuild or tag reinterpretation.
 
 ## Namespace and Repository Transfer Policy
