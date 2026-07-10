@@ -1,0 +1,147 @@
+From 75a9c05c209a1b57474428fd85e2717fa81e336e Mon Sep 17 00:00:00 2001
+From: supergate-jhbyun <jh.byun@supergate.cc>
+Date: Fri, 10 Jul 2026 01:59:26 -0400
+Subject: [PATCH] kolla_container: support digest-pinned Docker images
+
+---
+ ansible/module_utils/kolla_docker_worker.py   | 21 ++++++-
+ .../test_docker_worker.py                     | 56 +++++++++++++++++++
+ 2 files changed, 74 insertions(+), 3 deletions(-)
+
+diff --git a/ansible/module_utils/kolla_docker_worker.py b/ansible/module_utils/kolla_docker_worker.py
+index f0799f064..c93b8a94d 100644
+--- a/ansible/module_utils/kolla_docker_worker.py
++++ b/ansible/module_utils/kolla_docker_worker.py
+@@ -69,6 +69,13 @@ class DockerWorker(ContainerWorker):
+             )
+ 
+     def check_image(self):
++        full_image = self.params.get('image')
++        if '@' in full_image:
++            try:
++                return self.dc.inspect_image(full_image)
++            except docker.errors.ImageNotFound:
++                return None
++
+         find_image = ':'.join(self.parse_image())
+         for image in self.dc.images():
+             repo_tags = image.get('RepoTags')
+@@ -183,6 +190,10 @@ class DockerWorker(ContainerWorker):
+     def get_image_id(self):
+         full_image = self.params.get('image')
+ 
++        if '@' in full_image:
++            image = self.check_image()
++            return image.get('Id') if image else None
++
+         image = self.dc.images(name=full_image, quiet=True)
+         return image[0] if len(image) == 1 else None
+ 
+@@ -195,7 +206,11 @@ class DockerWorker(ContainerWorker):
+                 email=self.params.get('auth_email')
+             )
+ 
+-        image, tag = self.parse_image()
++        full_image = self.params.get('image')
++        if '@' in full_image:
++            image, tag = full_image, None
++        else:
++            image, tag = self.parse_image()
+         old_image_id = self.get_image_id()
+ 
+         statuses = [
+@@ -208,8 +223,8 @@ class DockerWorker(ContainerWorker):
+             if 'error' in status:
+                 if status['error'].endswith('not found'):
+                     self.module.fail_json(
+-                        msg="The requested image does not exist: {}:{}".format(
+-                            image, tag),
++                        msg="The requested image does not exist: {}".format(
++                            full_image),
+                         failed=True
+                     )
+                 else:
+diff --git a/tests/kolla_container_tests/test_docker_worker.py b/tests/kolla_container_tests/test_docker_worker.py
+index 26fe020f2..baaf6e30a 100644
+--- a/tests/kolla_container_tests/test_docker_worker.py
++++ b/tests/kolla_container_tests/test_docker_worker.py
+@@ -806,6 +806,30 @@ class TestImage(base.BaseTestCase):
+         self.dw.dc.images.assert_called_once_with()
+         self.assertEqual(self.fake_data['images'][0], return_data)
+ 
++    def test_check_image_digest(self):
++        image = ('myregistrydomain.com:5000/ubuntu:16.04@sha256:'
++                 '47c3bdbcf99f0c1a36e4db')
++        image_data = {'Id': 'sha256:47c3bdbcf99f0c1a36e4db'}
++        self.dw = get_DockerWorker({'image': image})
++        self.dw.dc.inspect_image.return_value = image_data
++
++        return_data = self.dw.check_image()
++
++        self.dw.dc.inspect_image.assert_called_once_with(image)
++        self.assertEqual(image_data, return_data)
++
++    def test_check_image_digest_not_found(self):
++        image = ('myregistrydomain.com:5000/ubuntu:16.04@sha256:'
++                 '47c3bdbcf99f0c1a36e4db')
++        self.dw = get_DockerWorker({'image': image})
++        self.dw.dc.inspect_image.side_effect = docker_error.ImageNotFound(
++            'not found')
++
++        return_data = self.dw.check_image()
++
++        self.dw.dc.inspect_image.assert_called_once_with(image)
++        self.assertIsNone(return_data)
++
+     def test_check_image_before_docker_1_12(self):
+         self.dw = get_DockerWorker(
+             {'image': 'myregistrydomain.com:5000/centos:7.0'})
+@@ -955,6 +979,17 @@ class TestImage(base.BaseTestCase):
+         return_data = self.dw.get_image_id()
+         self.assertEqual('sha256:47c3bdbcf99f0c1a36e4db', return_data)
+ 
++    def test_get_image_id_digest(self):
++        image = ('myregistrydomain.com:5000/ubuntu:16.04@sha256:'
++                 '47c3bdbcf99f0c1a36e4db')
++        self.dw = get_DockerWorker({'image': image})
++        self.dw.dc.inspect_image.return_value = {
++            'Id': 'sha256:47c3bdbcf99f0c1a36e4db'}
++
++        return_data = self.dw.get_image_id()
++
++        self.assertEqual('sha256:47c3bdbcf99f0c1a36e4db', return_data)
++
+     def test_pull_image_new(self):
+         self.dw = get_DockerWorker(
+             {'image': 'myregistrydomain.com:5000/ubuntu:16.04',
+@@ -980,6 +1015,27 @@ class TestImage(base.BaseTestCase):
+             stream=True)
+         self.assertTrue(self.dw.changed)
+ 
++    def test_pull_image_digest(self):
++        image = ('myregistrydomain.com:5000/ubuntu:16.04@sha256:'
++                 '47c3bdbcf99f0c1a36e4db')
++        self.dw = get_DockerWorker({'image': image})
++        self.dw.dc.pull.return_value = [
++            b'{"status":"Pull complete"}\r\n',
++            b'{"status":"Digest: sha256:47c3bdbcf99f0c1a36e4db"}\r\n'
++        ]
++        self.dw.dc.inspect_image.side_effect = [
++            docker_error.ImageNotFound('not found'),
++            {'Id': 'sha256:47c3bdbcf99f0c1a36e4db'}
++        ]
++
++        self.dw.pull_image()
++
++        self.dw.dc.pull.assert_called_once_with(
++            repository=image,
++            tag=None,
++            stream=True)
++        self.assertTrue(self.dw.changed)
++
+     def test_pull_image_exists(self):
+         self.dw = get_DockerWorker(
+             {'image': 'myregistrydomain.com:5000/ubuntu:16.04'})
+-- 
+2.52.0
+
