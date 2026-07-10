@@ -164,3 +164,99 @@ arm64   sha256:b3a617f30898dcbe588132d718941c176f9323d3d017a14be2ff20a08ad549ce
 Local image inspection after each pull reported the requested architecture.
 The temporary `ALLOW_GHCR_DEPLOYMENT_PUBLISH` repository variable was restored
 to `false` immediately after the workflow completed.
+
+## web01 Gate B Preflight And Canary
+
+Gate B ran on 2026-07-10 after the exact approval phrase was received. The
+deployment state was revalidated before changes: control02, compute02,
+monitoring01, and horizon-022 were all `aarch64`; all 69 containers were
+running with no unhealthy or exited containers; and server, image, network,
+subnet, router, floating IP, load balancer, and stack counts were all zero.
+
+The protected rollback baseline is stored on web01 at:
+
+```text
+/data/kolla-ansible-deploy/backups/ghcr-canary-20260710T051114Z
+```
+
+The directory mode is `0700`, and archives that contain deployment
+configuration or credentials are `0600`. The baseline archives passed a full
+listing check and have these SHA-256 values:
+
+```text
+4141845b8afc4c7dd5b1371b875a5520b5678b5126e673ca037ff739b5a23c42  kolla-config.tar.zst
+a2928042087f3a91dc000ea823c394b55d4c581b88a801ae6530ab3556a97b74  zot-config-storage.tar.zst
+bc2dbcb2ab8eeb32429ed17101d0c4785fb62ce31c9667f23a818fa96198f724  evidence.tar.zst
+```
+
+An XFS reflink snapshot of Zot storage was also created. An external 6.3 GiB
+copy under `.context/web01-backups/ghcr-canary-20260710T051114Z` passed the
+same checksum file. `passwords.yml` remained byte-identical throughout Gate B,
+and `kolla-genpwd` was not run.
+
+The verified dev lock was installed at
+`/data/kolla-ansible-deploy/etc/kolla/globals.d/90-deployment-image-lock.yml`.
+Its SHA-256 is
+`4bacf13c005555f11eb5aed8028dc5a24fa8c3a672078ec96734f7fef6628b1d`,
+and its 54 variables resolve to 52 unique digest-pinned leaf images. The four
+global image defaults are now:
+
+```yaml
+docker_registry: "ghcr.io"
+docker_namespace: "supergate-jhbyun/kolla-image-build"
+docker_registry_insecure: "no"
+openstack_tag_suffix: ""
+```
+
+`kolla-ansible prechecks` completed with no failed or unreachable hosts. Its
+log loaded the `globals.d` lock and contained zero `web01:5000` references.
+
+### Kolla-Ansible Digest Compatibility
+
+The first `kolla-ansible pull` exposed a Kolla-Ansible 20.4.1.dev10 Docker
+worker incompatibility. It split `repository:tag@sha256:digest` at the final
+colon and sent the digest hex to Docker as a tag, producing a 404. A direct
+`docker pull` of the same full reference succeeded on control02 and resolved
+the expected `linux/arm64` image.
+
+The compatibility fix was developed test-first. Four digest tests failed
+against the original worker, then passed after the fix. The complete Docker
+worker test module passed 123 of 123 tests, followed by `flake8` and
+`git diff --check`. The actual four-node pull then completed with no failed or
+unreachable hosts. Independent Docker metadata inspection found exactly all
+52 locked digests and no extras; every image reported `linux/arm64`.
+
+The web01 Kolla-Ansible checkout remains based on
+`d72865ea088215e06faba85bb79e67d031e46818` and carries local commit
+`75a9c05c209a1b57474428fd85e2717fa81e336e`. The reproducible patch is
+`patches/kolla-ansible/0001-kolla_container-support-digest-pinned-Docker-images.patch`
+with SHA-256
+`baeb3871392b8957cbeae4ec0f492a5f4ca5b5b9c9b9970b1030f1757d7e6bab`.
+
+### Canary Result
+
+The first limited Horizon attempt stopped before changing a container because
+delegated fact gathering reused the Rocky 9 Python 3.9 path on the Rocky 10
+control host. The canary commands were retried with
+`-e ansible_python_interpreter=auto_silent`, allowing per-host discovery.
+
+Horizon on horizon-022 was reconfigured first, followed by Keystone,
+Keystone fernet, and Keystone SSH on control02. All four running containers
+use their exact lock references and `linux/arm64` images:
+
+```text
+horizon            sha256:4530c2e5aff621fed4aaca9a62f0070d730ccca89c65b0b41cb1d0493c865233
+keystone           sha256:4381e5877a1a1fbc9ddb6cd6d66f41bcfb0556a2b66daed9203cdcadcac46db4
+keystone-fernet    sha256:edcb6c49d5a04aa1c54942744378c9dea042cda60c72efd46b517c403a688a2c
+keystone-ssh       sha256:2d457be587eb19d502148750cb698750b1d3b4db58b9b221ba46b2c26ac59526
+```
+
+Post-canary verification reported 69 running containers, zero unhealthy or
+non-running containers, exactly four GHCR canary containers, and 65 unchanged
+legacy Zot containers. Horizon returned HTTP 302 through both VIPs. Keystone
+token creation returned HTTP 201 with a subject token, and authenticated
+discovery returned HTTP 200. All user resource counts remained zero. The
+successful pull and canary logs contain zero `web01:5000` references.
+
+Zot remains running. Stopping it, destroying the deployment, and deploying the
+remaining 65 containers are outside Gate B and require their separate gates.
