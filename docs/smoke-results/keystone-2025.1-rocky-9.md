@@ -108,3 +108,63 @@ linux/arm64 sha256:d7137456067c3e2ffe1aa8e60304346547658d0bf0f2ea7e745739380c5bd
 The downloaded publish summary passed `scripts/validate-publish-summary.py`,
 and `docker buildx imagetools inspect` confirmed the architecture-neutral tag
 contains both platform manifests.
+
+## Dependency-Aware Pipeline Verification
+
+Date: 2026-07-10
+
+Full-core dry-run workflow:
+<https://github.com/supergate-jhbyun/kolla-image-build/actions/runs/29059325510>
+
+Result: success
+
+The rendered full-core plan contains 21 deployable leaf images, 8 shared
+parent images, and 7 service groups. The workflow expands this into 2 native
+parent jobs followed by 14 service-group jobs, with the leaf matrix bounded to
+8 concurrent jobs.
+
+Optimized keystone smoke workflow:
+<https://github.com/supergate-jhbyun/kolla-image-build/actions/runs/29059485665>
+
+Commit: `64190e3563bdb017f696b0d0a67ba22ab068a5e0`
+
+Result: success
+
+Runner mapping and job duration:
+
+```text
+shared parents amd64  ubuntu-24.04      7m32s
+shared parents arm64  ubuntu-24.04-arm 10m51s
+identity leaf amd64   ubuntu-24.04      4m12s
+identity leaf arm64   ubuntu-24.04-arm  3m36s
+manifest finalize     ubuntu-24.04         24s
+```
+
+Both parent summaries report only `base`, `openstack-base`, and
+`keystone-base` as built. Both identity summaries report only `keystone` as
+built, the three pre-pulled parents as skipped, and no failures. This verifies
+that service jobs reuse the explicitly published parent layer instead of
+rebuilding it.
+
+Published manifest digest:
+
+```text
+sha256:151f512ebc13ab07154b54bd263ede20ba2601643fca596d153a80a5d8bb34a4
+```
+
+Architecture digests:
+
+```text
+linux/amd64 sha256:70be020dbcaf8c3bc1910245e8beca92e3b36e429148a83dea2af4f138be2041
+linux/arm64 sha256:7d32f3b98df6e9b6ddc5a26de863272c20e2faafd244b80a9eca121a2a6ff79e
+```
+
+The downloaded publish artifact passed
+`scripts/validate-publish-summary.py --allow-partial --image keystone`.
+Using a Docker configuration without GHCR credentials, anonymous
+`imagetools inspect` resolved the deploy tag to both platform manifests and
+anonymous `crane pull --format=oci` downloaded the complete amd64 and arm64
+layouts. Their index digests matched the architecture digests above.
+
+This verification published only the approved keystone smoke image. The
+workflow guard still rejects a real full-core publish.
